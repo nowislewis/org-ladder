@@ -64,8 +64,9 @@ Returns a formatted string with detailed status information."
 
 COUNT specifies how many months to return. If nil, return all months.
 Returns a list of monthly entries in chronological order."
-  ;; Ensure cache is loaded and up-to-date
-  (org-ladder-calculate-all-scores)
+  ;; Use cached data if available, only calculate if cache is empty
+  (unless org-ladder--cache-data
+    (org-ladder-calculate-all-scores))
 
   (if count
       (seq-take org-ladder--cache-data (min count (length org-ladder--cache-data)))
