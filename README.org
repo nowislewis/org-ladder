@@ -19,10 +19,29 @@ Org Ladder 是一个基于 org-mode 任务完成时间的游戏化系统，灵�
 
 ** 1. 加载包
 
+*** 完整加载
+
 #+BEGIN_SRC elisp
   ;; 添加到你的 Emacs 配置中
   (add-to-list 'load-path "/path/to/org-ladder")
   (require 'org-ladder)
+#+END_SRC
+
+*** 使用 Autoload（推荐）
+
+使用 autoload 可以延迟加载包，只在需要时加载相关功能：
+
+#+BEGIN_SRC elisp
+  ;; 添加到你的 Emacs 配置中
+  (add-to-list 'load-path "/path/to/org-ladder")
+
+  ;; 主要函数会自动延迟加载
+  ;; 当调用以下命令时，相关包会自动加载：
+  ;; - org-ladder-display-current-status
+  ;; - org-ladder-show-detailed-status
+  ;; - org-ladder-force-refresh
+  ;; - org-ladder-show-history-review
+  ;; - 等等...
 #+END_SRC
 
 ** 2. 初始化系统
@@ -86,8 +105,18 @@ Org Ladder 是一个基于 org-mode 任务完成时间的游戏化系统，灵�
 *** 加载历史回顾模块
 
 #+BEGIN_SRC elisp
+  ;; 方法1：完整加载
   (require 'org-ladder-history-review)
-  ;; 或者使用延迟加载
+
+  ;; 方法2：使用 autoload（推荐）
+  ;; 函数会自动延迟加载，无需手动 require
+  ;; 当调用以下命令时，历史回顾模块会自动加载：
+  ;; - org-ladder-show-history-review
+  ;; - org-ladder-show-history-review-6
+  ;; - org-ladder-show-history-review-12
+  ;; - org-ladder-show-history-review-all
+
+  ;; 方法3：手动延迟加载
   (org-ladder-load-history-review)
 #+END_SRC
 

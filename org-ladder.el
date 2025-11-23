@@ -4,6 +4,45 @@
 ;; Version: 1.0
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
 
+;;; Autoloads:
+
+;;;###autoload
+(defgroup org-ladder nil
+  "Org Ladder gamification system."
+  :group 'org
+  :prefix "org-ladder-")
+
+;;;###autoload
+(defcustom org-ladder-default-duration 5
+  "Default duration in minutes for tasks without effort or clock data."
+  :type 'integer
+  :group 'org-ladder)
+
+;;;###autoload
+(defcustom org-ladder-monthly-reset-day 1
+  "Day of month when ladder resets (1-31)."
+  :type 'integer
+  :group 'org-ladder)
+
+;;;###autoload
+(defcustom org-ladder-retention-rate 0.1
+  "Fraction of previous month's total score to retain (0.0-1.0)."
+  :type 'float
+  :group 'org-ladder)
+
+;;;###autoload
+(defcustom org-ladder-storage-file "~/.emacs.d/org-ladder-history.el"
+  "File to store monthly ladder history."
+  :type 'file
+  :group 'org-ladder)
+
+;;;###autoload
+(defcustom org-ladder-files nil
+  "List of org files to scan for ladder statistics.
+If nil, uses org-agenda-files."
+  :type '(repeat file)
+  :group 'org-ladder)
+
 ;;; Commentary:
 ;; This package provides a gamification system for org-mode tasks based on
 ;; completion time, with monthly ladder rankings and tier progression.
@@ -152,6 +191,7 @@ Return total score in minutes."
             org-ladder--last-calculation-time (current-time))))
   org-ladder--current-score)
 
+;;;###autoload
 (defun org-ladder-force-refresh ()
   "Force refresh the current score cache.
 
@@ -343,6 +383,7 @@ Examples:
                 (upcase-initials (symbol-name tier-name))
                 sub-tier total-sub))))))
 
+;;;###autoload
 (defun org-ladder-display-current-status (&optional force-refresh)
   "Display current ladder status.
 
@@ -355,6 +396,7 @@ immediate updates."
         (current-score (org-ladder-calculate-current-score force-refresh)))
     (message "Org Ladder: %s | Total: %d minutes" tier-display current-score)))
 
+;;;###autoload
 (defun org-ladder-show-detailed-status (&optional force-refresh)
   "Show detailed ladder status in a buffer.
 
@@ -456,6 +498,7 @@ Performs the following setup:
   (message "Org Ladder initialized"))
 
 ;; History review integration
+;;;###autoload
 (defun org-ladder-load-history-review ()
   "Load history review functionality.
 

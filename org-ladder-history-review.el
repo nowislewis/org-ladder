@@ -4,6 +4,8 @@
 ;; Version: 1.0
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
 
+;;; Autoloads:
+
 ;;; Commentary:
 ;; This package provides history review functionality for org-ladder,
 ;; allowing users to view detailed status information for past months.
@@ -12,11 +14,13 @@
 
 (require 'org-ladder)
 
+;;;###autoload
 (defgroup org-ladder-history-review nil
   "Org Ladder history review functionality."
   :group 'org-ladder
   :prefix "org-ladder-history-review-")
 
+;;;###autoload
 (defcustom org-ladder-history-review-months-count 12
   "Number of months to show in history review.
 Set to nil to show all available months."
@@ -68,6 +72,7 @@ Returns a list of monthly entries in chronological order."
         (seq-take sorted-history (min count (length sorted-history)))
       sorted-history)))
 
+;;;###autoload
 (defun org-ladder-show-history-review (&optional months-count)
   "Show detailed history review of past months.
 
@@ -122,16 +127,19 @@ Example usage:
             (message "%s" (buffer-string))
           (display-buffer (current-buffer)))))))
 
+;;;###autoload
 (defun org-ladder-show-history-review-all ()
   "Show detailed history review for all available months."
   (interactive)
   (org-ladder-show-history-review nil))
 
+;;;###autoload
 (defun org-ladder-show-history-review-6 ()
   "Show detailed history review for the last 6 months."
   (interactive)
   (org-ladder-show-history-review 6))
 
+;;;###autoload
 (defun org-ladder-show-history-review-12 ()
   "Show detailed history review for the last 12 months."
   (interactive)
