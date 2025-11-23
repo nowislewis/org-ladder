@@ -384,17 +384,16 @@ Opens in a dedicated buffer for detailed viewing."
 
       (cond
        ((eq tier-name 'legend)
-        (insert (format " Current Tier: Legend\n"))
-        (insert (format "󰔓 Total Score: %d minutes\n\n" current-score)))
+        (insert (format " Current Tier: Legend\n")))
        (t
         (insert (format " Current Tier: %s %d/%d\n"
                         (capitalize (symbol-name tier-name)) sub-tier total-sub))
-        (insert (format "󰔓 Current Score: %d minutes\n" current-score))
         (when (> score-to-next-sub 0)
           (insert (format "󰔚 Current Progress: %d/%d minutes\n"
                           sub-tier-progress sub-tier-total))
           (insert (format "󱊽 To Next Level: %d minutes\n" score-to-next-sub)))
-        (insert "\n")))
+        ))
+      (insert (format "󰔓 Total Score: %d minutes\n\n" current-score))
 
       ;; Add monthly history
       (when org-ladder--monthly-history
