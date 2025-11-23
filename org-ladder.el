@@ -202,7 +202,7 @@ Return current month's score."
       ;; Convert hash table to sorted list and update cache
       (setq org-ladder--cache-data
             (mapcar (lambda (month-year)
-                      (let ((score (gethash month-year monthly-scores 0))
+                      (let* ((score (gethash month-year monthly-scores 0))
                             (year (car month-year))
                             (month (cadr month-year))
                             (tier (car (org-ladder-get-tier-info score))))
