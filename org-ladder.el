@@ -455,6 +455,17 @@ Performs the following setup:
   (org-ladder-check-monthly-reset)
   (message "Org Ladder initialized"))
 
+;; History review integration
+(defun org-ladder-load-history-review ()
+  "Load history review functionality.
+
+This function loads the history review module and makes its
+functions available. Call this if you want to use history review
+features without requiring the module at startup."
+  (interactive)
+  (require 'org-ladder-history-review)
+  (message "Org Ladder History Review loaded"))
+
 ;; Provide the package
 (provide 'org-ladder)
 
