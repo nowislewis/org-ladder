@@ -95,7 +95,7 @@ Org Ladder 是一个基于 org-mode 任务完成时间的游戏化系统，灵�
 
 - =M-x org-ladder-display-current-status= - 显示当前段位状态
 - =M-x org-ladder-show-detailed-status= - 显示详细状态（包含历史）
-- =M-x org-ladder-calculate-current-score= - 强制重新计算积分
+- =M-x org-ladder-calculate-all-scores= - 强制重新计算积分
 - =M-x org-ladder-force-refresh= - 强制刷新缓存并重新计算
 
 ** 历史回顾功能
@@ -226,7 +226,7 @@ Org Ladder: Gold 5/10 (Next: 120 minutes) | Total: 1650 minutes
    - 验证 EFFORT 和 CLOCK 格式正确
 
 2. **段位显示错误**
-   - 运行 =M-x org-ladder-calculate-current-score t= 强制重新计算
+   - 运行 =M-x org-ladder-calculate-all-scores t= 强制重新计算
    - 检查 org-agenda 文件是否包含已完成任务
 
 3. **月度重置未执行**
@@ -241,7 +241,7 @@ Org Ladder: Gold 5/10 (Next: 120 minutes) | Total: 1650 minutes
 
 #+BEGIN_SRC elisp
   ;; 强制重新计算并显示调试信息
-  (org-ladder-calculate-current-score t)
+  (org-ladder-calculate-all-scores t)
   (org-ladder-display-current-status)
 
   ;; 查看历史记录

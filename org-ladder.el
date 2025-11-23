@@ -32,7 +32,8 @@
 
 ;;;###autoload
 (defcustom org-ladder-storage-file "~/.emacs.d/org-ladder-history.el"
-  "File to store monthly ladder history."
+  "File to store monthly reset history.
+Only used for tracking monthly reset state, not for caching scores."
   :type 'file
   :group 'org-ladder)
 
@@ -76,10 +77,6 @@ If nil, uses org-agenda-files."
   :type 'float
   :group 'org-ladder)
 
-(defcustom org-ladder-storage-file "~/.emacs.d/org-ladder-history.el"
-  "File to store monthly ladder history."
-  :type 'file
-  :group 'org-ladder)
 
 (defcustom org-ladder-files nil
   "List of org files to scan for ladder statistics.
@@ -105,9 +102,10 @@ For legend tier, max-score and sub-tier-count are nil.")
 (defvar org-ladder--last-calculation-time nil
   "Timestamp of last score calculation.")
 
-(defvar org-ladder--monthly-history nil
-  "History of monthly scores and tiers.
-Format: ((year month score tier) ...)")
+(defvar org-ladder--cache-data nil
+  "Cached ladder data for all months.
+Format: ((year month score tier) ...)
+All data is kept in memory, no file storage needed.")
 
 (defvar org-ladder--last-reset-month nil
   "Last month when reset was performed.
@@ -139,6 +137,17 @@ Return nil if no closed time found."
   (when-let* ((closed (org-element-property :closed task)))
     (org-timestamp-to-time closed)))
 
+(defun org-ladder--get-month-year (time)
+  "Get (year month) from TIME."
+  (let ((decoded (decode-time time)))
+    (list (nth 5 decoded) (nth 4 decoded))))
+
+(defun org-ladder--hash-table-keys (hash-table)
+  "Get all keys from HASH-TABLE."
+  (let (keys)
+    (maphash (lambda (k _v) (push k keys)) hash-table)
+    keys))
+
 (defun org-ladder--current-month-p (time)
   "Check if TIME is in current month."
   (let ((now (current-time)))
@@ -164,16 +173,17 @@ Return score in minutes."
       org-ladder-default-duration))))
 
 ;; Main calculation function
-(defun org-ladder-calculate-current-score (&optional force-recalc)
-  "Calculate current month's total score.
+(defun org-ladder-calculate-all-scores (&optional force-recalc)
+  "Calculate scores for all months from org files.
 If FORCE-RECALC is non-nil, recalculate even if cached.
-Return total score in minutes."
+Updates org-ladder--cache-data with all monthly scores.
+Return current month's score."
   (when (or force-recalc
-            (not org-ladder--current-score)
+            (not org-ladder--cache-data)
             (not org-ladder--last-calculation-time)
             (> (time-to-seconds (time-since org-ladder--last-calculation-time))
                300)) ; 5 minutes cache
-    (let ((total 0)
+    (let ((monthly-scores (make-hash-table :test 'equal))
           (files (or org-ladder-files (and (boundp 'org-agenda-files) org-agenda-files))))
       (when files
         (dolist (file files)
@@ -181,14 +191,31 @@ Return total score in minutes."
             (with-current-buffer (find-file-noselect file)
               (org-map-entries
                (lambda ()
-                 (when (and (org-entry-is-done-p)
-                            (org-ladder--current-month-p
-                             (org-ladder--get-closed-time (org-element-at-point))))
-                   (setq total (+ total (org-ladder--calculate-task-score
-                                        (org-element-at-point))))))
+                 (when-let* ((closed-time (org-ladder--get-closed-time (org-element-at-point)))
+                             (done-p (member (org-get-todo-state) org-done-keywords)))
+                   (let* ((month-year (org-ladder--get-month-year closed-time))
+                          (score (org-ladder--calculate-task-score (org-element-at-point)))
+                          (current-total (gethash month-year monthly-scores 0)))
+                     (puthash month-year (+ current-total score) monthly-scores))))
                nil 'file)))))
-      (setq org-ladder--current-score total
-            org-ladder--last-calculation-time (current-time))))
+
+      ;; Convert hash table to sorted list and update cache
+      (setq org-ladder--cache-data
+            (mapcar (lambda (month-year)
+                      (let ((score (gethash month-year monthly-scores 0))
+                            (year (car month-year))
+                            (month (cadr month-year))
+                            (tier (car (org-ladder-get-tier-info score))))
+                        (list year month score tier)))
+                    (sort (org-ladder--hash-table-keys monthly-scores)
+                          (lambda (a b)
+                            (or (> (car a) (car b))
+                                (and (= (car a) (car b)) (> (cadr a) (cadr b))))))))
+
+      ;; Update current month score
+      (let ((current-month (org-ladder--get-month-year (current-time))))
+        (setq org-ladder--current-score (gethash current-month monthly-scores 0)
+              org-ladder--last-calculation-time (current-time)))))
   org-ladder--current-score)
 
 ;;;###autoload
@@ -203,9 +230,10 @@ Example usage:
   (org-ladder-force-refresh)  ; Force refresh and show status
   (org-ladder-display-current-status)  ; Show updated status"
   (interactive)
-  (setq org-ladder--current-score nil
+  (setq org-ladder--cache-data nil
+        org-ladder--current-score nil
         org-ladder--last-calculation-time nil)
-  (let ((new-score (org-ladder-calculate-current-score t)))
+  (let ((new-score (org-ladder-calculate-all-scores t)))
     (message "Org Ladder: Cache refreshed. Current score: %d minutes" new-score)
     new-score))
 
@@ -286,22 +314,19 @@ For scores below minimum tier range, defaults to Bronze tier."
   "Get current tier information.
 Return (tier-name sub-tier total-sub-tiers score-to-next-tier score-to-next-sub
         sub-tier-progress sub-tier-total)."
-  (let ((score (org-ladder-calculate-current-score)))
+  (let ((score (org-ladder-calculate-all-scores)))
     (org-ladder-get-tier-info score)))
 
-;; Persistent storage
-(defun org-ladder-save-history ()
-  "Save monthly history to storage file."
+;; Persistent storage (only for reset tracking)
+(defun org-ladder-save-cache ()
+  "Save reset tracking data to storage file."
   (with-temp-file org-ladder-storage-file
-    (insert "(setq org-ladder--monthly-history '")
-    (prin1 org-ladder--monthly-history (current-buffer))
-    (insert "\n")
     (insert "(setq org-ladder--last-reset-month '")
     (prin1 org-ladder--last-reset-month (current-buffer))
     (insert ")\n")))
 
-(defun org-ladder-load-history ()
-  "Load monthly history from storage file."
+(defun org-ladder-load-cache ()
+  "Load reset tracking data from storage file."
   (when (file-exists-p org-ladder-storage-file)
     (load-file org-ladder-storage-file)))
 
@@ -313,9 +338,9 @@ Return (tier-name sub-tier total-sub-tiers score-to-next-tier score-to-next-sub
          (current-month (nth 4 current-time))
          (current-day (nth 3 current-time)))
 
-    ;; Load history if not loaded
-    (when (not org-ladder--monthly-history)
-      (org-ladder-load-history))
+    ;; Load cache if not loaded
+    (when (not org-ladder--cache-data)
+      (org-ladder-load-cache))
 
     ;; Check if reset is needed
     (when (and (= current-day org-ladder-monthly-reset-day)
@@ -325,16 +350,12 @@ Return (tier-name sub-tier total-sub-tiers score-to-next-tier score-to-next-sub
 
 (defun org-ladder-perform-monthly-reset ()
   "Perform monthly ladder reset."
-  (let* ((current-score (org-ladder-calculate-current-score t))
+  (let* ((current-score (org-ladder-calculate-all-scores t))
          (current-time (decode-time (current-time)))
          (year (nth 5 current-time))
          (month (nth 4 current-time))
          (current-tier-info (org-ladder-get-current-tier-info))
          (carry-over (floor (* current-score org-ladder-retention-rate))))
-
-    ;; Save current month to history
-    (push (list year month current-score (car current-tier-info))
-          org-ladder--monthly-history)
 
     ;; Update reset tracking
     (setq org-ladder--last-reset-month (list year month))
@@ -344,7 +365,7 @@ Return (tier-name sub-tier total-sub-tiers score-to-next-tier score-to-next-sub
           org-ladder--last-calculation-time (current-time))
 
     ;; Save to persistent storage
-    (org-ladder-save-history)
+    (org-ladder-save-cache)
 
     (message "Org Ladder: Monthly reset completed. Carry-over: %d minutes" carry-over)))
 
@@ -368,7 +389,7 @@ Examples:
          (score-to-next-sub (nth 4 tier-info))
          (sub-tier-progress (nth 5 tier-info))
          (sub-tier-total (nth 6 tier-info))
-         (current-score (org-ladder-calculate-current-score force-refresh)))
+         (current-score (org-ladder-calculate-all-scores force-refresh)))
 
     (cond
      ((eq tier-name 'legend)
@@ -393,7 +414,7 @@ immediate updates."
   (interactive "P")
   (org-ladder-check-monthly-reset)
   (let ((tier-display (org-ladder-format-tier-display force-refresh))
-        (current-score (org-ladder-calculate-current-score force-refresh)))
+        (current-score (org-ladder-calculate-all-scores force-refresh)))
     (message "Org Ladder: %s | Total: %d minutes" tier-display current-score)))
 
 ;;;###autoload
@@ -410,7 +431,7 @@ If FORCE-REFRESH is non-nil, force recalculation before displaying.
 Opens in a dedicated buffer for detailed viewing."
   (interactive "P")
   (org-ladder-check-monthly-reset)
-  (let* ((current-score (org-ladder-calculate-current-score force-refresh))
+  (let* ((current-score (org-ladder-calculate-all-scores force-refresh))
          (tier-info (org-ladder-get-tier-info current-score))
          (tier-name (nth 0 tier-info))
          (sub-tier (nth 1 tier-info))
@@ -438,9 +459,9 @@ Opens in a dedicated buffer for detailed viewing."
       (insert (format "󰔓 Total Score: %d minutes\n\n" current-score))
 
       ;; Add monthly history
-      (when org-ladder--monthly-history
+      (when org-ladder--cache-data
         (insert "=== Monthly History ===\n")
-        (dolist (entry (reverse (seq-take org-ladder--monthly-history 6))) ; Last 6 months
+        (dolist (entry (seq-take org-ladder--cache-data 6)) ; Last 6 months
           (let ((year (nth 0 entry))
                 (month (nth 1 entry))
                 (score (nth 2 entry))
@@ -469,7 +490,7 @@ Adds:
     (defun org-ladder-agenda-header ()
       "Add ladder status to agenda header."
       (let ((tier-display (org-ladder-format-tier-display))
-            (current-score (org-ladder-calculate-current-score)))
+            (current-score (org-ladder-calculate-all-scores)))
         (concat "Org Ladder: " tier-display " | Total: " (number-to-string current-score) " minutes\n")))
 
     ;; Initialize org-agenda-custom-commands if not defined
@@ -488,11 +509,11 @@ Adds:
   "Initialize org-ladder system.
 
 Performs the following setup:
-- Loads monthly history from persistent storage
+- Loads reset tracking from persistent storage
 - Integrates with org-agenda
 - Checks if monthly reset is needed
 - Displays initialization message"
-  (org-ladder-load-history)
+  (org-ladder-load-cache)
   (org-ladder-agenda-integration)
   (org-ladder-check-monthly-reset)
   (message "Org Ladder initialized"))

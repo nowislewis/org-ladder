@@ -64,13 +64,12 @@ Returns a formatted string with detailed status information."
 
 COUNT specifies how many months to return. If nil, return all months.
 Returns a list of monthly entries in chronological order."
-  (when (not org-ladder--monthly-history)
-    (org-ladder-load-history))
+  ;; Ensure cache is loaded and up-to-date
+  (org-ladder-calculate-all-scores)
 
-  (let ((sorted-history (reverse org-ladder--monthly-history)))
-    (if count
-        (seq-take sorted-history (min count (length sorted-history)))
-      sorted-history)))
+  (if count
+      (seq-take org-ladder--cache-data (min count (length org-ladder--cache-data)))
+    org-ladder--cache-data))
 
 ;;;###autoload
 (defun org-ladder-show-history-review (&optional months-count)
