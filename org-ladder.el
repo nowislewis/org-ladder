@@ -332,10 +332,10 @@ Examples:
 
     (cond
      ((eq tier-name 'legend)
-      (format "🌟 Legend (%d minutes)" current-score))
+      (format " Legend (%d minutes)" current-score))
      (t
       (if (> score-to-next-sub 0)
-          (format "%s %d/%d (Current: %d/%d min)"
+          (format "󱊽 %s %d/%d (Current: %d/%d min)"
                   (upcase-initials (symbol-name tier-name))
                   sub-tier total-sub
                   sub-tier-progress sub-tier-total)
@@ -384,16 +384,16 @@ Opens in a dedicated buffer for detailed viewing."
 
       (cond
        ((eq tier-name 'legend)
-        (insert (format "🌟 Current Tier: Legend\n"))
-        (insert (format "📊 Total Score: %d minutes\n\n" current-score)))
+        (insert (format " Current Tier: Legend\n"))
+        (insert (format "󰔓 Total Score: %d minutes\n\n" current-score)))
        (t
-        (insert (format "🎯 Current Tier: %s %d/%d\n"
+        (insert (format " Current Tier: %s %d/%d\n"
                         (capitalize (symbol-name tier-name)) sub-tier total-sub))
-        (insert (format "📊 Current Score: %d minutes\n" current-score))
+        (insert (format "󰔓 Current Score: %d minutes\n" current-score))
         (when (> score-to-next-sub 0)
-          (insert (format "📈 Current Progress: %d/%d minutes\n"
+          (insert (format "󰔚 Current Progress: %d/%d minutes\n"
                           sub-tier-progress sub-tier-total))
-          (insert (format "🎯 To Next Level: %d minutes\n" score-to-next-sub)))
+          (insert (format "󱊽 To Next Level: %d minutes\n" score-to-next-sub)))
         (insert "\n")))
 
       ;; Add monthly history
