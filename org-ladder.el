@@ -121,14 +121,14 @@ Return nil if no effort property found."
 (defun org-ladder--get-clock-minutes (task)
   "Get total clock time in minutes from TASK.
 Return nil if no clock data found."
-  (when-let* ((clock (org-element-property :CLOCK task)))
-    (let ((total 0))
-      (dolist (clock-item clock)
-        (when (and (listp clock-item)
-                   (eq (car clock-item) 'clock))
-          (let ((duration (org-element-property :duration clock-item)))
-            (when duration
-              (setq total (+ total (org-duration-to-minutes duration)))))))
+  (save-excursion
+    (goto-char (org-element-property :begin task))
+    (let ((total 0)
+          (end (org-element-property :end task)))
+      ;; Search for all CLOCK lines with duration (format: =>  H:MM)
+      (while (re-search-forward "CLOCK:.*=>[ \t]*\\([0-9]+:[0-9]+\\)" end t)
+        (when-let ((duration-str (match-string 1)))
+          (setq total (+ total (org-duration-to-minutes duration-str)))))
       (if (> total 0) total nil))))
 
 (defun org-ladder--get-closed-time (task)
