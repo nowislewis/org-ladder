@@ -189,6 +189,7 @@ Return current month's score."
         (dolist (file files)
           (when (file-exists-p file)
             (with-current-buffer (find-file-noselect file)
+              (org-mode)
               (org-map-entries
                (lambda ()
                  (when-let* ((closed-time (org-ladder--get-closed-time (org-element-at-point)))
