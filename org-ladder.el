@@ -360,14 +360,26 @@ Cached for 5 minutes; pass FORCE to bypass."
   (message "Org Ladder: %s" (org-ladder--tier-string (org-ladder-current-score))))
 
 ;;;###autoload
-(defun org-ladder-show-details ()
-  "Show tier, score, source breakdown, and monthly history in a buffer."
-  (interactive)
+(defun org-ladder-show-details (&optional months)
+  "Show tier, score, source breakdown, and monthly history in a buffer.
+With a numeric prefix arg, show that many months of history.
+With a plain \\[universal-argument], show all history.
+Without a prefix, show the most recent 12 months."
+  (interactive "P")
   (org-ladder-check-monthly-reset)
   (let* ((score      (org-ladder-current-score))
          (info       (org-ladder-get-tier-info score))
          (cur-ym     (org-ladder--month-key (current-time)))
-         (by-source  (org-ladder-calculate-scores-by-source)))
+         (by-source  (org-ladder-calculate-scores-by-source))
+         (all-scores (org-ladder-calculate-scores))
+         (history    (cond ((null months)  (seq-take all-scores 12))
+                           ((listp months) all-scores)
+                           (t              (seq-take all-scores months))))
+         (tier-name  (lambda (sc)
+                       (capitalize (symbol-name
+                                    (car (org-ladder-get-tier-info sc))))))
+         (src-label  (lambda (src)
+                       (replace-regexp-in-string "--.*$" "" (symbol-name src)))))
     (pcase-let ((`(,name ,sub ,nsubs ,to-t ,to-s ,prog ,tot) info))
       (with-current-buffer (get-buffer-create "*Org Ladder*")
         (erase-buffer)
@@ -382,36 +394,37 @@ Cached for 5 minutes; pass FORCE to bypass."
         ;; ── Source breakdown for current month ───────────────────────────
         (insert "Sources (this month)\n")
         (dolist (src-entry by-source)
-          (let* ((src       (car src-entry))
-                 (monthly   (cdr src-entry))
-                 (src-score (or (cdr (assoc cur-ym monthly)) 0))
-                 (src-name  (symbol-name src))
-                 ;; Strip internal prefix for readability: foo--collect -> foo
-                 (label     (replace-regexp-in-string "--.*$" "" src-name)))
-            (insert (format "  %-30s %5d\n" label src-score))))
+          (let* ((src-score (or (cdr (assoc cur-ym (cdr src-entry))) 0)))
+            (insert (format "  %-30s %5d\n"
+                            (funcall src-label (car src-entry))
+                            src-score))))
         (insert "\n")
 
-        ;; ── Monthly history ───────────────────────────────────────────────
+        ;; ── Monthly history grouped by year ──────────────────────────────
         (insert "Monthly history\n")
-        (dolist (entry (seq-take (org-ladder-calculate-scores) 12))
-          (let* ((ym    (car entry))
-                 (sc    (cdr entry))
-                 ;; Per-source scores for this month, as "src:N" annotations
-                 (breakdown
-                  (mapconcat
-                   (lambda (src-entry)
-                     (let* ((src      (car src-entry))
-                            (monthly  (cdr src-entry))
-                            (s        (or (cdr (assoc ym monthly)) 0))
-                            (label    (replace-regexp-in-string
-                                       "--.*$" "" (symbol-name src))))
-                       (format "%s:%d" label s)))
-                   by-source "  ")))
-            (insert (format "  %d-%02d  %5d  %-10s  %s\n"
-                            (car ym) (cadr ym) sc
-                            (capitalize (symbol-name
-                                         (car (org-ladder-get-tier-info sc))))
-                            breakdown))))
+        (let* ((by-year (seq-group-by (lambda (e) (caar e)) history))
+               (years   (sort (mapcar #'car by-year) #'>)))
+          (dolist (year years)
+            (let* ((months     (cdr (assoc year by-year)))
+                   (year-total (apply #'+ (mapcar #'cdr months)))
+                   (year-max   (apply #'max (mapcar #'cdr months))))
+              (insert (format "\n%d  total: %d min  (best month: %s %d)\n"
+                              year year-total
+                              (funcall tier-name year-max)
+                              year-max))
+              (dolist (entry months)
+                (let* ((ym        (car entry))
+                       (sc        (cdr entry))
+                       (breakdown (mapconcat
+                                   (lambda (src-entry)
+                                     (format "%s:%d"
+                                             (funcall src-label (car src-entry))
+                                             (or (cdr (assoc ym (cdr src-entry))) 0)))
+                                   by-source "  ")))
+                  (insert (format "  %d-%02d  %5d  %-10s  %s\n"
+                                  (car ym) (cadr ym) sc
+                                  (funcall tier-name sc)
+                                  breakdown)))))))
         (display-buffer (current-buffer))))))
 
 ;;; ── Load default source ──────────────────────────────────────────────────────
