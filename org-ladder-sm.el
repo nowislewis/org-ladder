@@ -36,7 +36,7 @@
   :type '(repeat file)
   :group 'org-ladder-sm)
 
-(defcustom org-ladder-sm-score-per-review 1
+(defcustom org-ladder-sm-score-per-review 2
   "Score awarded per review event."
   :type 'number
   :group 'org-ladder-sm)
