@@ -49,20 +49,19 @@
   "Return position of the next heading after BEG, or point-max."
   (save-excursion
     (goto-char beg)
-    (if (re-search-forward "^\\*" nil t 2)
+    (forward-line 1)
+    (if (re-search-forward "^\\*" nil t)
         (line-beginning-position)
       (point-max))))
 
 (defun org-ladder-clock--scan-file (file tbl)
   "Scan FILE for DONE tasks and accumulate scores into hash-table TBL.
 Keys in TBL are day time keys; values are accumulated minute scores."
-  (with-current-buffer (find-file-noselect file t) ; t = no warnings
-    (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (point-min))
-        ;; Walk every heading — habits may be in any TODO state
-        (while (re-search-forward "^\\*+ " nil t)
+  (with-temp-buffer
+    (insert-file-contents file)
+    (goto-char (point-min))
+    ;; Walk every heading — habits may be in any TODO state
+    (while (re-search-forward "^\\*+ " nil t)
           (let* ((heading-beg (line-beginning-position))
                  (heading-end (org-ladder-clock--next-heading-pos heading-beg))
                  closed-time effort-min clock-min
@@ -129,7 +128,7 @@ Keys in TBL are day time keys; values are accumulated minute scores."
                          (effort-min (max effort-min default))
                          (t          default)))
                        (key (org-ladder-time-from-emacs closed-time)))
-                  (puthash key (+ (gethash key tbl 0) score) tbl))))))))))
+                  (puthash key (+ (gethash key tbl 0) score) tbl))))))))
 
 ;;; ── Source function ──────────────────────────────────────────────────────────
 

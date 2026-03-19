@@ -215,25 +215,34 @@ All scores are aggregated to month granularity before tier calculation."
   (let ((d (decode-time time)))
     (list (nth 5 d) (nth 4 d))))
 
-(defun org-ladder--normalize-entries (raw-entries)
-  "Normalize RAW-ENTRIES to ((year month) . score) alist.
-Accepts both legacy (y m) keys and time keys of any granularity."
-  (let ((tbl (make-hash-table :test 'equal)))
-    (dolist (entry raw-entries)
-      (let* ((k  (car entry))
-             (ym (if (= (length k) 2) k
-                   (org-ladder-time-key-to-month k))))
-        (puthash ym (+ (gethash ym tbl 0) (cdr entry)) tbl)))
-    (let (rows)
-      (maphash (lambda (ym s) (push (cons ym s) rows)) tbl)
-      rows)))
-
 (defun org-ladder--sort-monthly (rows)
   "Sort monthly score ROWS descending by (year month)."
   (sort rows (lambda (a b)
                (or (> (caar a) (caar b))
                    (and (= (caar a) (caar b))
                         (> (cadar a) (cadar b)))))))
+
+(defun org-ladder--collect-raw ()
+  "Return a flat list of all raw (TIME-KEY . SCORE) entries from every source.
+Errors in individual sources are logged and skipped."
+  (let (result)
+    (dolist (src org-ladder-score-sources)
+      (condition-case err
+          (setq result (nconc result (funcall src)))
+        (error (message "org-ladder: source %s: %s" src
+                        (error-message-string err)))))
+    result))
+
+(defun org-ladder--normalize-entries (raw-entries)
+  "Aggregate RAW-ENTRIES into a monthly alist ((year month) . score).
+Accepts time keys of any granularity."
+  (let ((tbl (make-hash-table :test 'equal)))
+    (dolist (entry raw-entries)
+      (let ((ym (org-ladder-time-key-to-month (car entry))))
+        (puthash ym (+ (gethash ym tbl 0) (cdr entry)) tbl)))
+    (let (rows)
+      (maphash (lambda (ym s) (push (cons ym s) rows)) tbl)
+      rows)))
 
 (defun org-ladder-calculate-scores-by-source ()
   "Return scores broken down by source.
@@ -253,12 +262,9 @@ a sorted alist of ((year month) . score)."
 (defun org-ladder--collect-daily ()
   "Return a hash-table of day-key -> score across all sources."
   (let ((tbl (make-hash-table :test 'equal)))
-    (dolist (src org-ladder-score-sources)
-      (condition-case err
-          (dolist (e (funcall src))
-            (when (eq (org-ladder-time-key-granularity (car e)) 'day)
-              (puthash (car e) (+ (gethash (car e) tbl 0) (cdr e)) tbl)))
-        (error (message "org-ladder: source %s: %s" src (error-message-string err)))))
+    (dolist (e (org-ladder--collect-raw))
+      (when (eq (org-ladder-time-key-granularity (car e)) 'day)
+        (puthash (car e) (+ (gethash (car e) tbl 0) (cdr e)) tbl)))
     tbl))
 
 (defun org-ladder-calculate-scores (&optional force)
@@ -268,21 +274,10 @@ Cached for 5 minutes; pass FORCE to bypass."
             (null org-ladder--cache)
             (null org-ladder--cache-time)
             (> (float-time (time-since org-ladder--cache-time)) 300))
-    (let ((tbl (make-hash-table :test 'equal)))
-      (dolist (src org-ladder-score-sources)
-        (condition-case err
-            (dolist (entry (funcall src))
-              (let* ((k  (car entry))
-                     (ym (if (= (length k) 2) k
-                           (org-ladder-time-key-to-month k))))
-                (puthash ym (+ (gethash ym tbl 0) (cdr entry)) tbl)))
-          (error (message "org-ladder: source %s: %s" src
-                          (error-message-string err)))))
-      (let (rows)
-        (maphash (lambda (ym s) (push (cons ym s) rows)) tbl)
-        (setq org-ladder--cache (org-ladder--sort-monthly rows)
-              org-ladder--cache-time (current-time))))
-    org-ladder--cache)
+    (setq org-ladder--cache
+          (org-ladder--sort-monthly
+           (org-ladder--normalize-entries (org-ladder--collect-raw)))
+          org-ladder--cache-time (current-time)))
   org-ladder--cache)
 
 (defun org-ladder-current-score ()
@@ -357,6 +352,12 @@ Cached for 5 minutes; pass FORCE to bypass."
   (let ((filled (max 0 (min width (round (* width (/ (float current) total)))))))
     (concat "[" (make-string filled ?█) (make-string (- width filled) ?░) "]")))
 
+(defun org-ladder--rank-name (score)
+  "Return a short rank string like \"Gold 6\" or \"Legend\" for SCORE."
+  (pcase-let ((`(,name ,sub) (org-ladder-get-tier-info score)))
+    (if (eq name 'legend) "Legend"
+      (format "%s %d" (capitalize (symbol-name name)) sub))))
+
 (defun org-ladder--tier-string (score)
   "Return a compact display string for SCORE."
   (pcase-let ((`(,name ,sub ,nsubs ,_to-t ,_to-s ,prog ,sub-sz)
@@ -404,6 +405,10 @@ HEIGHT is the number of rows (default 8)."
   (message "Org Ladder: %s" (org-ladder--tier-string (org-ladder-current-score))))
 
 ;;;###autoload
+(defun org-ladder--src-label (src)
+  "Return a short display name for source function SRC."
+  (replace-regexp-in-string "--.*$" "" (symbol-name src)))
+
 (defun org-ladder-show-details (&optional months)
   "Show tier, score, daily chart and monthly history in a buffer.
 With a numeric prefix arg, show that many months of history.
@@ -421,13 +426,7 @@ Without a prefix, show the most recent 12 months."
          (history    (cond ((null months)  (seq-take all-scores 12))
                            ((listp months) all-scores)
                            (t              (seq-take all-scores months))))
-         (daily-tbl  (org-ladder--collect-daily))
-         (src-label  (lambda (src)
-                       (replace-regexp-in-string "--.*$" "" (symbol-name src))))
-         (tier-str   (lambda (sc)
-                       (pcase-let ((`(,n ,s) (org-ladder-get-tier-info sc)))
-                         (if (eq n 'legend) "Legend"
-                           (format "%s %d" (capitalize (symbol-name n)) s))))))
+         (daily-tbl  (org-ladder--collect-daily)))
     (pcase-let ((`(,name ,sub ,nsubs ,to-t ,to-s ,prog ,tot) info))
       (with-current-buffer (get-buffer-create "*Org Ladder*")
         (erase-buffer)
@@ -440,29 +439,26 @@ Without a prefix, show the most recent 12 months."
                  (tier-max    (nth 1 (cdr tier-entry)))
                  (next        (cadr (memq tier-entry org-ladder-tiers)))
                  (nn          (capitalize (symbol-name (car next))))
-                 (nn-subs     (nth 2 (cdr next)))
                  (next-sub    (if (< sub nsubs)
                                   (format "%s %d/%d" (capitalize (symbol-name name)) (1+ sub) nsubs)
-                                (format "%s 1/%d" nn nn-subs)))
-                 (best-entry  (seq-reduce (lambda (a b) (if (>= (cdr a) (cdr b)) a b))
-                                          all-scores (car all-scores)))
-                 (best-score   (cdr best-entry))
+                                (format "%s 1/%d" nn (nth 2 (cdr next)))))
+                 (best-entry  (car all-scores))
+                 (best-score  (cdr best-entry))
                  (best-month-str (format "%d-%02d" (caar best-entry) (cadar best-entry)))
-                 (to-best      (max 0 (- best-score score)))
-                 (is-best      (>= score best-score))
-                 (today-d     (decode-time (current-time)))
-                 (day-now     (nth 3 today-d))
+                 (to-best     (max 0 (- best-score score)))
+                 (is-best     (>= score best-score))
+                 (day-now     (nth 3 (decode-time (current-time))))
                  (days-total  (calendar-last-day-of-month cur-month cur-year))
-                 (today-score   (gethash (org-ladder-time-today) daily-tbl 0))
-                 (yesterday-score (gethash (org-ladder-time-from-emacs
-                                            (time-subtract (current-time)
-                                                           (seconds-to-time 86400)))
-                                           daily-tbl 0))
-                 (recent-score  (if (> today-score 0) today-score yesterday-score))
-                 (recent-label  (if (> today-score 0) "today" "yesterday"))
-                 (avg-daily     (if (> day-now 0) (/ (float score) day-now) 0))
-                 (eom-avg-tier  (funcall tier-str (round (* avg-daily days-total))))
-                 (eom-recent-tier (funcall tier-str (* recent-score days-total))))
+                 (today-score (gethash (org-ladder-time-today) daily-tbl 0))
+                 (recent-score (if (> today-score 0) today-score
+                                 (gethash (org-ladder-time-from-emacs
+                                           (time-subtract (current-time)
+                                                          (seconds-to-time 86400)))
+                                          daily-tbl 0)))
+                 (recent-label (if (> today-score 0) "today" "yesterday"))
+                 (avg-daily   (if (> day-now 0) (/ (float score) day-now) 0))
+                 (eom-avg-tier    (org-ladder--rank-name (round (* avg-daily days-total))))
+                 (eom-recent-tier (org-ladder--rank-name (* recent-score days-total))))
             ;; title line
             (insert (format "* \uf091 %s %d/%d   %d pts\n\n"
                             (capitalize (symbol-name name)) sub nsubs score))
@@ -488,7 +484,7 @@ Without a prefix, show the most recent 12 months."
                               (org-ladder--progress-bar score best-score 10))
                             (format "%d/%d" score best-score)
                             (if is-best "\uf06d new!" (format "%dmin" to-best))
-                            (format "%s  (%s)" (funcall tier-str best-score) best-month-str)))
+                            (format "%s  (%s)" (org-ladder--rank-name best-score) best-month-str)))
             (insert "\n")
             ;; ── month progress line ───────────────────────────────────────
             (insert (format "  Month  %s  %d/%d days\n\n"
@@ -514,7 +510,7 @@ Without a prefix, show the most recent 12 months."
         ;; ── Monthly history ───────────────────────────────────────────────
         (insert "** Monthly History\n")
         (insert (format "   | Month   | Score |%s Tier          |\n"
-                        (mapconcat (lambda (s) (format " %-6s |" (funcall src-label (car s))))
+                        (mapconcat (lambda (s) (format " %-6s |" (org-ladder--src-label (car s))))
                                    by-source "")))
         (insert "   |---\n")
         (dolist (entry history)
@@ -524,7 +520,7 @@ Without a prefix, show the most recent 12 months."
                             (mapconcat (lambda (s)
                                          (format " %6d |" (or (cdr (assoc ym (cdr s))) 0)))
                                        by-source "")
-                            (funcall tier-str sc)))))
+                            (org-ladder--rank-name sc)))))
 
         (org-mode)
         (org-table-map-tables #'org-table-align t)
