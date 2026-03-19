@@ -88,7 +88,7 @@ Keys in TBL are day time keys; values are accumulated minute scores."
               (when (re-search-forward
                      ":EFFORT:[ \t]*\\([0-9]+:[0-9]+\\)" heading-end t)
                 (setq effort-min
-                      (org-duration-to-minutes (match-string 1)))))
+                      (round (org-duration-to-minutes (match-string 1))))))
 
             (if habitp
                 ;; ── Habit: score every State "DONE" log entry ────────────
@@ -115,7 +115,7 @@ Keys in TBL are day time keys; values are accumulated minute scores."
                             "CLOCK:.*=>[ \t]*\\([0-9]+:[0-9]+\\)" heading-end t)
                       (setq total
                             (+ total
-                               (org-duration-to-minutes (match-string 1)))))
+                               (round (org-duration-to-minutes (match-string 1))))))
                     (when (> total 0)
                       (setq clock-min total))))
 
