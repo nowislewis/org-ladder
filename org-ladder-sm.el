@@ -5,22 +5,19 @@
 ;; Package-Requires: ((emacs "27.1") (org "9.0") (org-ladder "3.0"))
 
 ;;; Commentary:
-;; Score source for org-sm (org-inc) spaced-repetition reviews.
+;; Score source for org-sm spaced-repetition reviews.
 ;;
-;; org-sm records each review as a line inside the heading's :LOGBOOK: drawer:
+;; Scans all LOGBOOK blocks in `org-ladder-sm-files'.  Each review line
+;; contributes `org-ladder-sm-score-per-review' points.
 ;;
-;;   :LOGBOOK:
+;; org-sm review lines start with "- <lowercase>" + inactive timestamp:
 ;;   - topic  a=1.5  [2026-03-11 Wed 18:47]
 ;;   - cloze  :easy  [2026-03-09 Mon 00:00]
-;;   :END:
+;;   - dismissed    [2026-03-11 Wed 18:47]
 ;;
-;; This source scans all files in `org-ladder-sm-files' for headings that
-;; carry a SRS_TYPE property, then counts every such LOGBOOK line as one
-;; review, contributing `org-ladder-sm-score-per-review' points.
-;;
-;; Uses pure regexp scanning -- no org-element cache dependency.
-;;
-;; Usage:  (require 'org-ladder-sm)   ; self-registering
+;; org built-in entries (CLOCK:, State, CLOSING NOTE...) are all uppercase,
+;; so lowercase is a reliable discriminator.  No SRS_TYPE dependency means
+;; dismissed cards are counted correctly.
 
 ;;; Code:
 
@@ -41,54 +38,35 @@
   :type 'number
   :group 'org-ladder-sm)
 
-;;; ── Regexp ───────────────────────────────────────────────────────────────────
-
-;; Matches a logbook review line, e.g.:
-;;   - topic  a=1.5  [2026-03-11 Wed 18:47]
-;;   - cloze  :easy  [2026-03-09 Mon 00:00]
+;; org-sm review line: "- <lowercase-word> ... [YYYY-MM-DD ...]"
+;; Group 1 captures the date.
 (defconst org-ladder-sm--review-re
-  (concat "^[ \t]*- \\(?:topic\\|cloze\\)"   ; review type
-          ".*"                                ; grade/afactor
-          "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)") ; date capture
-  "Regexp matching an org-sm LOGBOOK review line.
-Group 1 captures the YYYY-MM-DD date.")
-
-;;; ── Scanner ──────────────────────────────────────────────────────────────────
+  (concat "^[ \t]*- [a-z]"
+          ".*"
+          "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)")
+  "Regexp matching an org-sm LOGBOOK review line.  Group 1 = YYYY-MM-DD.")
 
 (defun org-ladder-sm--scan-file (file tbl)
-  "Scan FILE for org-sm review entries; accumulate day-key scores into TBL."
+  "Scan all LOGBOOK blocks in FILE; accumulate day-key scores into TBL."
   (with-current-buffer (find-file-noselect file t)
     (save-excursion
       (save-restriction
         (widen)
         (goto-char (point-min))
-        ;; Find every heading that has SRS_TYPE in its property drawer
-        (while (re-search-forward "^:SRS_TYPE:" nil t)
-          ;; Now look for a :LOGBOOK: block near this heading.
-          ;; It may appear before or after the :PROPERTIES: drawer.
-          ;; Search forward to the next heading boundary.
-          (let* ((section-end (save-excursion
-                                (or (re-search-forward "^\\*" nil t)
-                                    (point-max))))
-                 (lb-start (save-excursion
-                              (re-search-forward "^:LOGBOOK:" section-end t)))
-                 (lb-end   (when lb-start
-                             (save-excursion
-                               (goto-char lb-start)
-                               (re-search-forward "^:END:" section-end t)))))
-            (when (and lb-start lb-end)
+        (while (re-search-forward "^:LOGBOOK:" nil t)
+          (let* ((lb-start (point))
+                 (lb-end   (save-excursion
+                             (re-search-forward "^:END:" nil t))))
+            (when lb-end
               (save-excursion
                 (goto-char lb-start)
                 (while (re-search-forward org-ladder-sm--review-re lb-end t)
-                  (let* ((date-str (match-string 1))
-                         (key      (org-ladder-time-parse-iso date-str)))
+                  (let ((key (org-ladder-time-parse-iso (match-string 1))))
                     (when key
                       (puthash key
                                (+ (gethash key tbl 0)
                                   org-ladder-sm-score-per-review)
                                tbl))))))))))))
-
-;;; ── Source function ──────────────────────────────────────────────────────────
 
 (defun org-ladder-sm--collect ()
   "Return ((day-key . score) ...) from all org-sm review LOGBOOK entries."
@@ -103,11 +81,7 @@ Group 1 captures the YYYY-MM-DD date.")
       (maphash (lambda (k v) (push (cons k v) result)) tbl)
       result)))
 
-;;; ── Registration ─────────────────────────────────────────────────────────────
-
 (add-to-list 'org-ladder-score-sources #'org-ladder-sm--collect)
-
-;;; ── Optional cache invalidation ──────────────────────────────────────────────
 
 ;;;###autoload
 (defun org-ladder-sm-setup-review-hook ()
