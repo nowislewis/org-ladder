@@ -57,12 +57,12 @@ All scores are aggregated to month granularity before tier calculation."
 ;;; ── Tier configuration ───────────────────────────────────────────────────────
 
 (defconst org-ladder-tiers
-  '((bronze   .  (0    500  10))
-    (silver   .  (501  1200 10))
-    (gold     .  (1201 2100 10))
-    (platinum .  (2101 3200 10))
-    (diamond  .  (3201 4500 10))
-    (legend   .  (4501 nil  nil)))
+  '((bronze   .  (0    499  10))
+    (silver   .  (500  1199 10))
+    (gold     .  (1200 2099 10))
+    (platinum .  (2100 3199 10))
+    (diamond  .  (3200 4499 10))
+    (legend   .  (4500 nil  nil)))
   "Alist of (NAME . (MIN MAX SUB-COUNT)).  Legend tier has no upper bound.")
 
 ;;; ── State ────────────────────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ Cached for 5 minutes; pass FORCE to bypass."
 
 (defun org-ladder-get-tier-info (score)
   "Return (NAME SUB NSUBS TO-TIER TO-SUB PROGRESS SUB-SIZE) for SCORE."
-  (if (>= score 4501)
+  (if (>= score 4500)
       (list 'legend nil nil nil nil nil nil)
     (catch 'found
       (dolist (tc org-ladder-tiers)
@@ -305,13 +305,13 @@ Cached for 5 minutes; pass FORCE to bypass."
                (max   (nth 1 (cdr tc)))
                (nsubs (nth 2 (cdr tc))))
           (when (and max (>= score min) (<= score max))
-            (let* ((sub-sz   (/ (- max min) nsubs))
+            (let* ((sub-sz   (/ (1+ (- max min)) nsubs))
                    (progress (- score min))
                    (sub      (min nsubs (1+ (/ progress sub-sz)))))
               (throw 'found
                 (list (car tc) sub nsubs
                       (- max score)
-                      (if (< sub nsubs) (- (* sub sub-sz) progress) 0)
+                      (if (< sub nsubs) (- (* sub sub-sz) progress) (- max score))
                       (- progress (* (1- sub) sub-sz))
                       sub-sz))))))
       (list 'bronze 1 10 500 50 0 50))))
@@ -440,8 +440,8 @@ Without a prefix, show the most recent 12 months."
                  (next        (cadr (memq tier-entry org-ladder-tiers)))
                  (nn          (capitalize (symbol-name (car next))))
                  (next-sub    (if (< sub nsubs)
-                                  (format "%s %d/%d" (capitalize (symbol-name name)) (1+ sub) nsubs)
-                                (format "%s 1/%d" nn (nth 2 (cdr next)))))
+                                  (format "%s %d" (capitalize (symbol-name name)) (1+ sub))
+                                (format "%s 1" nn)))
                  (best-entry  (car all-scores))
                  (best-score  (cdr best-entry))
                  (best-month-str (format "%d-%02d" (caar best-entry) (cadar best-entry)))
@@ -467,8 +467,8 @@ Without a prefix, show the most recent 12 months."
             (insert "  |------+--------------+------------+--------+--------------------|\n")
             (insert (format "  | %-4s | %s | %10s | %6s | %-18s |\n"
                             "Sub"
-                            (org-ladder--progress-bar prog tot 10)
-                            (format "%d/%d" prog tot)
+                            (org-ladder--progress-bar prog (+ prog to-s) 10)
+                            (format "%d/%d" prog (+ prog to-s))
                             (format "%dmin\uf0e7" to-s)
                             next-sub))
             (insert (format "  | %-4s | %s | %10s | %6s | %-18s |\n"
