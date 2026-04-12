@@ -147,7 +147,8 @@ Keys in TBL are day time keys; values are accumulated minute scores."
 
 ;;; ── Registration ─────────────────────────────────────────────────────────────
 
-(add-to-list 'org-ladder-score-sources #'org-ladder-clock--collect)
+(with-eval-after-load 'org-ladder
+  (add-to-list 'org-ladder-score-sources #'org-ladder-clock--collect))
 
 (provide 'org-ladder-clock)
 ;;; org-ladder-clock.el ends here

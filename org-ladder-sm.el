@@ -81,7 +81,8 @@
       (maphash (lambda (k v) (push (cons k v) result)) tbl)
       result)))
 
-(add-to-list 'org-ladder-score-sources #'org-ladder-sm--collect)
+(with-eval-after-load 'org-ladder
+  (add-to-list 'org-ladder-score-sources #'org-ladder-sm--collect))
 
 ;;;###autoload
 (defun org-ladder-sm-setup-review-hook ()
