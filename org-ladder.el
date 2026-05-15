@@ -437,6 +437,8 @@ for the GitHub-style heatmap are preserved reliably."
           (fundamental-mode)
 
           ;; ── Artifact progress ──────────────────────────────────────────
+          ;; Load lazily so the first `org-ladder-show-details' can display
+          (require 'org-ladder-art nil t)
           (insert (propertize "🏺 Artifact\n" 'face '(:weight bold :height 1.2)))
           (if (and (fboundp 'org-ladder-art--get-encoded)
                    (fboundp 'org-ladder-art--decrypt)
