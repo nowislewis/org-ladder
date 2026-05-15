@@ -61,13 +61,15 @@ All scores are aggregated to month granularity before tier calculation."
 ;;; ── Tier configuration ───────────────────────────────────────────────────────
 
 (defconst org-ladder-tiers
-  '((bronze   .  (0    499  10))
-    (silver   .  (500  1199 10))
-    (gold     .  (1200 2099 10))
-    (platinum .  (2100 3199 10))
-    (diamond  .  (3200 4499 10))
-    (legend   .  (4500 nil  nil)))
-  "Alist of (NAME . (MIN MAX SUB-COUNT)).  Legend tier has no upper bound.")
+  '((bronze   .  (0    499  10  " Bronze"))
+    (silver   .  (500  1199 10  " Silver"))
+    (gold     .  (1200 2099 10  " Gold"))
+    (platinum .  (2100 3199 10  " Platinum"))
+    (diamond  .  (3200 4499 10  "󰫞 Diamond"))
+    (legend   .  (4500 nil  nil " Legend")))
+  "Alist of (NAME . (MIN MAX SUB-COUNT DISPLAY-NAME)).
+DISPLAY-NAME intentionally includes the icon as part of the rank name.
+Legend tier has no upper bound.")
 
 ;;; ── State ────────────────────────────────────────────────────────────────────
 
@@ -356,23 +358,28 @@ Cached for 5 minutes; pass FORCE to bypass."
   (let ((filled (max 0 (min width (round (* width (/ (float current) total)))))))
     (concat "[" (make-string filled ?█) (make-string (- width filled) ?░) "]")))
 
+(defun org-ladder--tier-display-name (name)
+  "Return display name for tier NAME, including its icon."
+  (or (nth 3 (cdr (assoc name org-ladder-tiers)))
+      (capitalize (symbol-name name))))
+
 (defun org-ladder--rank-name (score)
-  "Return a short rank string like \"Gold 6\" or \"Legend\" for SCORE."
+  "Return a short rank string like \" Gold 6\" or \" Legend\" for SCORE."
   (pcase-let ((`(,name ,sub) (org-ladder-get-tier-info score)))
-    (if (eq name 'legend) "Legend"
-      (format "%s %d" (capitalize (symbol-name name)) sub))))
+    (if (eq name 'legend) (org-ladder--tier-display-name name)
+      (format "%s %d" (org-ladder--tier-display-name name) sub))))
 
 (defun org-ladder--tier-string (score)
   "Return a compact display string for SCORE."
   (pcase-let ((`(,name ,sub ,nsubs ,_to-t ,_to-s ,prog ,sub-sz)
                (org-ladder-get-tier-info score)))
     (if (eq name 'legend)
-        (format "Legend (%d)" score)
+        (format "%s (%d)" (org-ladder--tier-display-name name) score)
       (let* ((tier-entry (assoc name org-ladder-tiers))
              (tier-min   (nth 0 (cdr tier-entry)))
              (tier-max   (nth 1 (cdr tier-entry))))
-        (format "\uf091 %s %d/%d  sub %s  tier %s  %d/%d"
-                (capitalize (symbol-name name)) sub nsubs
+        (format "%s %d/%d  sub %s  tier %s  %d/%d"
+                (org-ladder--tier-display-name name) sub nsubs
                 (org-ladder--progress-bar prog sub-sz 10)
                 (org-ladder--progress-bar (- score tier-min) (- tier-max tier-min) 10)
                 score tier-max)))))
@@ -402,17 +409,40 @@ HEIGHT is the number of rows (default 8)."
 ;;; ── Commands ─────────────────────────────────────────────────────────────────
 
 ;;;###autoload
+(defcustom org-ladder-status-quotes
+  '("Keep the streak alive."
+    "Small wins compound."
+    "Ship one brick today."
+    "Momentum beats motivation."
+    "Lock in and move."
+    "One clean rep."
+    "Make it count."
+    "Progress, not perfection."
+    "You are already in motion."
+    "Stay in the pocket."
+    "Another rep, another level."
+    "Tiny push. Big arc.")
+  "Short motivational lines randomly shown by `org-ladder-status'."
+  :type '(repeat string)
+  :group 'org-ladder)
+
+;;;###autoload
 (defun org-ladder-status ()
-  "Show current tier and score in the minibuffer."
+  "Show today's Org Ladder minutes plus one short motivational line."
   (interactive)
   (org-ladder-check-monthly-reset)
-  (message "Org Ladder: %s" (org-ladder--tier-string (org-ladder-current-score))))
+  (let* ((daily-tbl (org-ladder--collect-daily))
+         (today-score (gethash (org-ladder-time-today) daily-tbl 0))
+         (quote (nth (random (length org-ladder-status-quotes))
+                     org-ladder-status-quotes)))
+    (message "Org Ladder: %d min today — %s" today-score quote)))
 
 ;;;###autoload
 (defun org-ladder--src-label (src)
   "Return a short display name for source function SRC."
   (replace-regexp-in-string "--.*$" "" (symbol-name src)))
 
+;;;###autoload
 (defun org-ladder-show-details (&optional months)
   "Show a compact Org Ladder dashboard.
 This version is intentionally plain-text (not `org-mode') so custom faces
@@ -435,6 +465,13 @@ for the GitHub-style heatmap are preserved reliably."
         (let ((inhibit-read-only t))
           (erase-buffer)
           (fundamental-mode)
+
+          (let ((quote (nth (random (length org-ladder-status-quotes))
+                            org-ladder-status-quotes)))
+            (insert (propertize (format "⚡ %s\n" quote)
+                                'face '(:weight bold :height 1.35 :foreground "#A6E22E")))
+            (insert (propertize "────────────────────────────────────────\n\n"
+                                'face '(:foreground "#444444"))))
 
           ;; ── Artifact progress ──────────────────────────────────────────
           ;; Load lazily so the first `org-ladder-show-details' can display
@@ -525,7 +562,7 @@ for the GitHub-style heatmap are preserved reliably."
                                 today-bar today-remaining today-next-state)
                       (format "  NEXT    %s max stage reached\n\n" today-bar)))
             (insert (format "  SEASON  %s %s · %d min\n"
-                            (capitalize (symbol-name name))
+                            (org-ladder--tier-display-name name)
                             (if (eq name 'legend) "" (format "%d/%d" sub nsubs))
                             score))
             (insert (format "  TRACK   %.0f/day → %s\n\n" avg-daily eom-rank)))
