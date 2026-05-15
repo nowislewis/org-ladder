@@ -81,8 +81,9 @@ WIDTH is the inner art width.  LABEL is kept short and padded with dashes."
         (aset vec j tmp)))
     (append vec nil)))
 
-(defun org-ladder-art--render-buffer (ym-str score item _title)
-  "Render artifact ITEM for YM-STR according to SCORE."
+(defun org-ladder-art--render-buffer (ym-str score item _title &optional today-score)
+  "Render artifact ITEM for YM-STR according to SCORE.
+When TODAY-SCORE is positive, show a small positive signal gain."
   (let* ((max-score 4500)
          (art-padded (org-ladder-art--pad (plist-get item :art)))
          (lines (split-string art-padded "\n"))
@@ -95,11 +96,17 @@ WIDTH is the inner art width.  LABEL is kept short and padded with dashes."
          (top-label (if donep
                         (format "RELIC RESTORED · %s" ym-str)
                       (format "SIGNAL LOCK · %s" ym-str)))
+         (today-gain (and today-score
+                          (> today-score 0)
+                          (* 100 (/ (float today-score) max-score))))
          (bottom-label (if donep
                            (format "archived: %s" ym-str)
-                         (format "signal: %s %.1f%%"
+                         (format "signal: %s %.1f%%%s"
                                  (org-ladder--progress-bar unlock-count total-px 10)
-                                 (* 100 progress))))
+                                 (* 100 progress)
+                                 (if today-gain
+                                     (format "  +%.1f%% today" today-gain)
+                                   ""))))
          ;; Frame width must fit both the art and labels.  If labels are wider
          ;; than the image, keep the art centered instead of stretching the
          ;; reveal grid.
@@ -170,7 +177,10 @@ WIDTH is the inner art width.  LABEL is kept short and padded with dashes."
       (let ((inhibit-read-only t))
         (erase-buffer)
         (if encoded
-            (org-ladder-art--render-buffer ym-str score (org-ladder-art--decrypt encoded) "当前赛季正在发掘")
+            (let* ((daily-tbl (org-ladder--collect-daily))
+                   (today-score (gethash (org-ladder-time-today) daily-tbl 0)))
+              (org-ladder-art--render-buffer
+               ym-str score (org-ladder-art--decrypt encoded) "当前赛季正在发掘" today-score))
           (insert (propertize (format "【 司令部警告 】\n\n坐标 %s 区域未探测到任何遗迹信号。\n请将有效的加密图鉴档案放入目录: \n%s\n" 
                                       ym-str org-ladder-art-directory) 
                               'face '(:foreground "#F92672"))))

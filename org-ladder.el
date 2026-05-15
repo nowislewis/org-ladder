@@ -447,7 +447,8 @@ for the GitHub-style heatmap are preserved reliably."
                      (encoded (org-ladder-art--get-encoded ym-str)))
                 (if encoded
                     (org-ladder-art--render-buffer
-                     ym-str score (org-ladder-art--decrypt encoded) "Current Season")
+                     ym-str score (org-ladder-art--decrypt encoded) "Current Season"
+                     (gethash (org-ladder-time-today) daily-tbl 0))
                   (insert (format "  no artifact file for %s\n\n" ym-str))))
             (insert "  artifact module not loaded. Run M-x load-library RET org-ladder-art RET\n\n"))
 
@@ -491,34 +492,38 @@ for the GitHub-style heatmap are preserved reliably."
                  (eom-score   (round (* avg-daily days-total)))
                  (eom-rank    (org-ladder--rank-name eom-score))
                  (today-score (gethash (org-ladder-time-today) daily-tbl 0))
-                 (today-thresholds '((0 . "💤 idle / 待机中")
-                                     (15 . "✨ spark / 火花点燃")
-                                     (30 . "🔥 warm-up / 系统预热")
-                                     (60 . "🚀 active / 引擎启动")
-                                     (90 . "🎯 locked-in / 锁定目标")
-                                     (120 . "🧠 focused / 进入航道")
-                                     (180 . "🌊 deep work / 深潜作业")
-                                     (240 . "⚡ overdrive / 推进过载")
-                                     (360 . "🦸 hero mode / 英雄模式")
-                                     (480 . "🏆 legendary / 传说降临")
-                                     (999999 . "🌌 mythic ascension / 神话升格")))
+                 (today-thresholds '((0 . "💤 待机中")
+                                     (15 . "✨ 火花点燃")
+                                     (30 . "🔥 系统预热")
+                                     (60 . "🚀 引擎启动")
+                                     (90 . "🎯 锁定目标")
+                                     (120 . "🧠 进入航道")
+                                     (180 . "🌊 深潜作业")
+                                     (240 . "⚡ 推进过载")
+                                     (360 . "🦸 英雄模式")
+                                     (480 . "🏆 传说降临")
+                                     (999999 . "🌌 神话升格")))
                  (today-state (catch 'state
                                 (let ((prev (cdar today-thresholds)))
                                   (dolist (entry (cdr today-thresholds) prev)
                                     (when (< today-score (car entry))
                                       (throw 'state prev))
                                     (setq prev (cdr entry))))))
-                 (today-next (catch 'next
-                               (dolist (entry today-thresholds 999999)
-                                 (when (> (car entry) today-score)
-                                   (throw 'next (car entry))))))
-                 (today-bar (if (>= today-next 999999)
-                                (org-ladder--progress-bar 1 1 10)
-                              (org-ladder--progress-bar today-score today-next 10))))
-            (insert (format "  TODAY   %s\n" today-state))
-            (insert (format "          %s %d/%s min\n\n"
-                            today-bar today-score
-                            (if (>= today-next 999999) "∞" (number-to-string today-next))))
+                 (today-next-entry (catch 'next
+                                     (dolist (entry today-thresholds nil)
+                                       (when (> (car entry) today-score)
+                                         (throw 'next entry)))))
+                 (today-next (or (car-safe today-next-entry) 999999))
+                 (today-next-state (cdr-safe today-next-entry))
+                 (today-remaining (and today-next-state (- today-next today-score)))
+                 (today-bar (if today-next-state
+                                (org-ladder--progress-bar today-score today-next 10)
+                              (org-ladder--progress-bar 1 1 10))))
+            (insert (format "  TODAY   %d min · %s\n" today-score today-state))
+            (insert (if today-next-state
+                        (format "  NEXT    %s %d min to %s\n\n"
+                                today-bar today-remaining today-next-state)
+                      (format "  NEXT    %s max stage reached\n\n" today-bar)))
             (insert (format "  SEASON  %s %s · %d min\n"
                             (capitalize (symbol-name name))
                             (if (eq name 'legend) "" (format "%d/%d" sub nsubs))
