@@ -24,6 +24,10 @@
 
 ;;; Code:
 
+(require 'cl-lib)
+(require 'seq)
+(require 'calendar)
+
 ;;; ── Customisation ────────────────────────────────────────────────────────────
 
 (defgroup org-ladder nil
@@ -410,10 +414,9 @@ HEIGHT is the number of rows (default 8)."
   (replace-regexp-in-string "--.*$" "" (symbol-name src)))
 
 (defun org-ladder-show-details (&optional months)
-  "Show tier, score, daily chart and monthly history in a buffer.
-With a numeric prefix arg, show that many months of history.
-With a plain \\[universal-argument], show all history.
-Without a prefix, show the most recent 12 months."
+  "Show a compact Org Ladder dashboard.
+This version is intentionally plain-text (not `org-mode') so custom faces
+for the GitHub-style heatmap are preserved reliably."
   (interactive "P")
   (org-ladder-check-monthly-reset)
   (let* ((score      (org-ladder-current-score))
@@ -427,104 +430,110 @@ Without a prefix, show the most recent 12 months."
                            ((listp months) all-scores)
                            (t              (seq-take all-scores months))))
          (daily-tbl  (org-ladder--collect-daily)))
-    (pcase-let ((`(,name ,sub ,nsubs ,to-t ,to-s ,prog ,tot) info))
+    (pcase-let ((`(,name ,sub ,nsubs ,_to-t ,_to-s ,_prog ,_tot) info))
       (with-current-buffer (get-buffer-create "*Org Ladder*")
-        (erase-buffer)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (fundamental-mode)
 
-        ;; ── Header ───────────────────────────────────────────────────────
-        (if (eq name 'legend)
-            (insert (format "* \uf091 Legend  [%d]\n\n" score))
-          (let* ((tier-entry  (assoc name org-ladder-tiers))
-                 (tier-min    (nth 0 (cdr tier-entry)))
-                 (tier-max    (nth 1 (cdr tier-entry)))
-                 (next        (cadr (memq tier-entry org-ladder-tiers)))
-                 (nn          (capitalize (symbol-name (car next))))
-                 (next-sub    (if (< sub nsubs)
-                                  (format "%s %d" (capitalize (symbol-name name)) (1+ sub))
-                                (format "%s 1" nn)))
-                 (best-entry  (car all-scores))
-                 (best-score  (cdr best-entry))
-                 (best-month-str (format "%d-%02d" (caar best-entry) (cadar best-entry)))
-                 (to-best     (max 0 (- best-score score)))
-                 (is-best     (>= score best-score))
-                 (day-now     (nth 3 (decode-time (current-time))))
+          ;; ── Artifact progress ──────────────────────────────────────────
+          (insert (propertize "🏺 Artifact\n" 'face '(:weight bold :height 1.2)))
+          (if (and (fboundp 'org-ladder-art--get-encoded)
+                   (fboundp 'org-ladder-art--decrypt)
+                   (fboundp 'org-ladder-art--render-buffer))
+              (let* ((ym-str (format "%04d-%02d" cur-year cur-month))
+                     (encoded (org-ladder-art--get-encoded ym-str)))
+                (if encoded
+                    (org-ladder-art--render-buffer
+                     ym-str score (org-ladder-art--decrypt encoded) "Current Season")
+                  (insert (format "  no artifact file for %s\n\n" ym-str))))
+            (insert "  artifact module not loaded. Run M-x load-library RET org-ladder-art RET\n\n"))
+
+          ;; ── GitHub style 14-day heatmap ────────────────────────────────
+          (insert (propertize "🔥 Activity\n" 'face '(:weight bold :height 1.2)))
+          (let* ((today-time (current-time))
+                 (streak 0)
+                 (best-day 0))
+            ;; streak: if today is empty, yesterday can still be the active streak
+            (let ((offset (if (> (gethash (org-ladder-time-from-emacs today-time) daily-tbl 0) 0) 0 1)))
+              (catch 'done
+                (dotimes (i 30)
+                  (let* ((t-day (time-subtract today-time (seconds-to-time (* (+ i offset) 86400))))
+                         (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0)))
+                    (if (> sc 0)
+                        (setq streak (1+ streak))
+                      (throw 'done t))))))
+            ;; best day in current month
+            (dotimes (i (nth 3 (decode-time today-time)))
+              (setq best-day (max best-day
+                                  (gethash (list cur-year cur-month (1+ i)) daily-tbl 0))))
+            ;; 14-day green squares, two rows of seven days
+            (insert "  ")
+            (cl-loop for i from 13 downto 0 do
+                     (let* ((t-day (time-subtract today-time (seconds-to-time (* i 86400))))
+                            (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0))
+                            (color (cond ((= sc 0)   "#30363D")
+                                         ((< sc 30)  "#0E4429")
+                                         ((< sc 90)  "#006D32")
+                                         ((< sc 180) "#26A641")
+                                         (t          "#39D353"))))
+                       (insert (propertize "■ " 'face `(:foreground ,color))))
+                     (when (= i 7) (insert "\n  ")))
+            (insert (format "\n  streak: %d days    best day: %d min\n\n" streak best-day)))
+
+          ;; ── Tier / projection ──────────────────────────────────────────
+          (insert (propertize "📈 Rank\n" 'face '(:weight bold :height 1.2)))
+          (let* ((day-now     (nth 3 (decode-time (current-time))))
                  (days-total  (calendar-last-day-of-month cur-month cur-year))
-                 (today-score (gethash (org-ladder-time-today) daily-tbl 0))
-                 (recent-score (if (> today-score 0) today-score
-                                 (gethash (org-ladder-time-from-emacs
-                                           (time-subtract (current-time)
-                                                          (seconds-to-time 86400)))
-                                          daily-tbl 0)))
-                 (recent-label (if (> today-score 0) "today" "yesterday"))
                  (avg-daily   (if (> day-now 0) (/ (float score) day-now) 0))
-                 (eom-avg-tier    (org-ladder--rank-name (round (* avg-daily days-total))))
-                 (eom-recent-tier (org-ladder--rank-name (* recent-score days-total))))
-            ;; title line
-            (insert (format "* \uf091 %s %d/%d   %d pts\n\n"
-                            (capitalize (symbol-name name)) sub nsubs score))
-            ;; ── table 1: rank progress + personal best ───────────────────
-            (insert "  |      | progress     | now / goal | gap    | next               |\n")
-            (insert "  |------+--------------+------------+--------+--------------------|\n")
-            (insert (format "  | %-4s | %s | %10s | %6s | %-18s |\n"
-                            "Sub"
-                            (org-ladder--progress-bar prog (+ prog to-s) 10)
-                            (format "%d/%d" prog (+ prog to-s))
-                            (format "%dmin\uf0e7" to-s)
-                            next-sub))
-            (insert (format "  | %-4s | %s | %10s | %6s | %-18s |\n"
-                            "Tier"
-                            (org-ladder--progress-bar (- score tier-min) (- tier-max tier-min) 10)
-                            (format "%d/%d" score tier-max)
-                            (format "%dmin" to-t)
-                            nn))
-            (insert (format "  | %-4s | %s | %10s | %6s | %-18s |\n"
-                            "Best"
-                            (if is-best
+                 (eom-score   (round (* avg-daily days-total)))
+                 (eom-rank    (org-ladder--rank-name eom-score))
+                 (today-score (gethash (org-ladder-time-today) daily-tbl 0))
+                 (today-thresholds '((0 . "💤 idle / 待机中")
+                                     (15 . "✨ spark / 火花点燃")
+                                     (30 . "🔥 warm-up / 系统预热")
+                                     (60 . "🚀 active / 引擎启动")
+                                     (90 . "🎯 locked-in / 锁定目标")
+                                     (120 . "🧠 focused / 进入航道")
+                                     (180 . "🌊 deep work / 深潜作业")
+                                     (240 . "⚡ overdrive / 推进过载")
+                                     (360 . "🦸 hero mode / 英雄模式")
+                                     (480 . "🏆 legendary / 传说降临")
+                                     (999999 . "🌌 mythic ascension / 神话升格")))
+                 (today-state (catch 'state
+                                (let ((prev (cdar today-thresholds)))
+                                  (dolist (entry (cdr today-thresholds) prev)
+                                    (when (< today-score (car entry))
+                                      (throw 'state prev))
+                                    (setq prev (cdr entry))))))
+                 (today-next (catch 'next
+                               (dolist (entry today-thresholds 999999)
+                                 (when (> (car entry) today-score)
+                                   (throw 'next (car entry))))))
+                 (today-bar (if (>= today-next 999999)
                                 (org-ladder--progress-bar 1 1 10)
-                              (org-ladder--progress-bar score best-score 10))
-                            (format "%d/%d" score best-score)
-                            (if is-best "\uf06d new!" (format "%dmin" to-best))
-                            (format "%s  (%s)" (org-ladder--rank-name best-score) best-month-str)))
-            (insert "\n")
-            ;; ── month progress line ───────────────────────────────────────
-            (insert (format "  Month  %s  %d/%d days\n\n"
-                            (org-ladder--progress-bar day-now days-total 10)
-                            day-now days-total))
-            ;; ── table 2: pace & projection ────────────────────────────────
-            (insert "  |           | min/day | EOM proj |\n")
-            (insert "  |-----------+---------+----------|\n")
-            (insert (format "  | %-9s | %7s | %-8s |\n"
-                            "Avg (MTD)"
-                            (format "%.0f/day" avg-daily)
-                            eom-avg-tier))
-            (insert (format "  | %-9s | %7s | %-8s |\n"
-                            recent-label
-                            (format "%d/day" recent-score)
-                            eom-recent-tier))
-            (org-ladder--bar-chart
-             (mapcar (lambda (d) (gethash (list cur-year cur-month d) daily-tbl 0))
-                     (number-sequence 1 day-now))
-             (mapcar (lambda (d) (format "%02d" d)) (number-sequence 1 day-now))
-             (format "Daily Score  %d-%02d" cur-year cur-month))))
+                              (org-ladder--progress-bar today-score today-next 10))))
+            (insert (format "  TODAY   %s\n" today-state))
+            (insert (format "          %s %d/%s min\n\n"
+                            today-bar today-score
+                            (if (>= today-next 999999) "∞" (number-to-string today-next))))
+            (insert (format "  SEASON  %s %s · %d min\n"
+                            (capitalize (symbol-name name))
+                            (if (eq name 'legend) "" (format "%d/%d" sub nsubs))
+                            score))
+            (insert (format "  TRACK   %.0f/day → %s\n\n" avg-daily eom-rank)))
 
-        ;; ── Monthly history ───────────────────────────────────────────────
-        (insert "** Monthly History\n")
-        (insert (format "   | Month   | Score |%s Tier          |\n"
-                        (mapconcat (lambda (s) (format " %-6s |" (org-ladder--src-label (car s))))
-                                   by-source "")))
-        (insert "   |---\n")
-        (dolist (entry history)
-          (let ((ym (car entry)) (sc (cdr entry)))
-            (insert (format "   | %d-%02d | %5d |%s %-14s|\n"
-                            (car ym) (cadr ym) sc
-                            (mapconcat (lambda (s)
-                                         (format " %6d |" (or (cdr (assoc ym (cdr s))) 0)))
-                                       by-source "")
-                            (org-ladder--rank-name sc)))))
+          ;; ── History ────────────────────────────────────────────────────
+          (insert (propertize "📅 History\n" 'face '(:weight bold :height 1.2)))
+          (insert "  Month    Score   Rank\n")
+          (insert "  ─────────────────────────\n")
+          (dolist (entry history)
+            (let ((ym (car entry)) (sc (cdr entry)))
+              (insert (format "  %d-%02d  %5d   %s\n"
+                              (car ym) (cadr ym) sc (org-ladder--rank-name sc)))))
 
-        (org-mode)
-        (org-table-map-tables #'org-table-align t)
-        (goto-char (point-min))
+          (goto-char (point-min))
+          (setq buffer-read-only t))
         (display-buffer (current-buffer))))))
 
 ;;; ── Load default source ──────────────────────────────────────────────────────
