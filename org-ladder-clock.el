@@ -130,16 +130,8 @@ it occurred, even if the task is not yet completed."
             ;; C. Award Completion Bonus if the task is CLOSED
             (when closed-time
               (let* ((closed-key (org-ladder-time-from-emacs closed-time))
-                     (bonus 0))
-                (if (= total-clock 0)
-                    ;; Finished without clocking: award max(effort, default)
-                    (setq bonus (if effort-min
-                                    (max effort-min org-ladder-clock-default-duration)
-                                  org-ladder-clock-default-duration))
-                  ;; Finished with clocking: award remaining effort as bonus (if any)
-                  (when (and effort-min (> effort-min total-clock))
-                    (setq bonus (- effort-min total-clock))))
-
+                     (target (max (or effort-min 0) org-ladder-clock-default-duration))
+                     (bonus (if (> target total-clock) (- target total-clock) 0)))
                 (when (> bonus 0)
                   (puthash closed-key (+ (gethash closed-key tbl 0) bonus) tbl))))))))))
 
