@@ -55,80 +55,93 @@
       (point-max))))
 
 (defun org-ladder-clock--scan-file (file tbl)
-  "Scan FILE for DONE tasks and accumulate scores into hash-table TBL.
-Keys in TBL are day time keys; values are accumulated minute scores."
+  "Scan FILE for tasks and accumulate scores into hash-table TBL.
+Keys in TBL are day time keys; values are accumulated minute scores.
+Supports progressive clocking: logged CLOCK time is credited to the day
+it occurred, even if the task is not yet completed."
   (with-temp-buffer
     (insert-file-contents file)
     (goto-char (point-min))
-    ;; Walk every heading — habits may be in any TODO state
     (while (re-search-forward "^\\*+ " nil t)
-          (let* ((heading-beg (line-beginning-position))
-                 (heading-end (org-ladder-clock--next-heading-pos heading-beg))
-                 closed-time effort-min clock-min
-                 (habitp (save-excursion
-                           (goto-char heading-beg)
-                           (re-search-forward
-                            ":STYLE:[ \t]+habit" heading-end t))))
+      (let* ((heading-beg (line-beginning-position))
+             (heading-end (org-ladder-clock--next-heading-pos heading-beg))
+             effort-min habitp)
 
-            ;; 1. CLOSED timestamp (planning line, within ~5 lines of heading)
-            (save-excursion
-              (goto-char heading-beg)
-              (forward-line 1)
-              (let ((limit (min heading-end
-                                (save-excursion (forward-line 5) (point)))))
-                (when (re-search-forward
-                       "CLOSED:[ \t]*\\[\\([^]]+\\)\\]" limit t)
-                  (setq closed-time
-                        (org-time-string-to-time (match-string 1))))))
+        ;; 1. Check for Habit (limit search to avoid long body scanning)
+        (save-excursion
+          (goto-char heading-beg)
+          (setq habitp (re-search-forward ":STYLE:[ \t]+habit" heading-end t)))
 
-            ;; 2. EFFORT property (used by both paths)
-            (save-excursion
-              (goto-char heading-beg)
-              (when (re-search-forward
-                     ":EFFORT:[ \t]*\\([0-9]+:[0-9]+\\)" heading-end t)
-                (setq effort-min
-                      (round (org-duration-to-minutes (match-string 1))))))
+        ;; 2. Extract EFFORT (Support various org-duration formats like "1h", "10", "1:30")
+        ;; Case insensitive to catch :Effort: or :EFFORT:
+        (save-excursion
+          (goto-char heading-beg)
+          (let ((case-fold-search t))
+            (when (re-search-forward "^[ \t]*:EFFORT:[ \t]*\\([^ \n\r\t]+\\)" heading-end t)
+              (let ((effort-str (match-string 1)))
+                (setq effort-min (ignore-errors
+                                   (round (org-duration-to-minutes effort-str))))))))
 
-            (if habitp
-                ;; ── Habit: score every State "DONE" log entry ────────────
-                ;; Ignore CLOSED (may reflect only the last completion).
-                (let ((score (max (or effort-min 0)
-                                  org-ladder-clock-default-duration)))
-                  (save-excursion
-                    (goto-char heading-beg)
-                    (while (re-search-forward
-                            "^[ \t]*- CLOSING NOTE \\[\\([^\]]+\\)\\]"
-                            heading-end t)
-                      (let ((key (org-ladder-time-from-emacs
-                                  (org-time-string-to-time (match-string 1)))))
-                        (puthash key (+ (gethash key tbl 0) score) tbl)))))
+        (let ((total-clock 0)
+              closed-time)
 
-              ;; ── Normal task: requires CLOSED timestamp ───────────────
-              (when closed-time
+          ;; A. ALWAYS Process CLOCK entries (Progressive Clocking for ALL tasks)
+          (save-excursion
+            (goto-char heading-beg)
+            ;; Support both [...] and <...> timestamp formats for robust parsing
+            (while (re-search-forward "^[ \t]*CLOCK:[ \t]*[[<]\\([^]>]+\\)[\]>].*=>[ \t]*\\([^ \n\r\t]+\\)" heading-end t)
+              (let* ((clock-time-str (match-string 1))
+                     (duration-str (match-string 2))
+                     (clock-time (ignore-errors (org-time-string-to-time clock-time-str)))
+                     (duration (ignore-errors (round (org-duration-to-minutes duration-str)))))
+                (when (and clock-time duration)
+                  (let ((clock-key (org-ladder-time-from-emacs clock-time)))
+                    (setq total-clock (+ total-clock duration))
+                    (puthash clock-key (+ (gethash clock-key tbl 0) duration) tbl))))))
 
-                ;; 3. CLOCK lines with duration
+          (if habitp
+              ;; ── Habit Logic: Score per completion (Fallback if not clocked) ──
+              ;; Habits usually trigger "- State DONE". If clocked, the user already got points above.
+              ;; But if they just ticked it off without clocking, they should get the baseline effort score.
+              ;; Since a habit can be completed many times, we give the baseline score for EVERY completion.
+              ;; (Note: if they clocked AND ticked it off on the same day, they technically get both.
+              ;;  This encourages clocking but rewards the raw completion action too).
+              (let ((score (if effort-min 
+                               (max effort-min org-ladder-clock-default-duration)
+                             org-ladder-clock-default-duration)))
                 (save-excursion
                   (goto-char heading-beg)
-                  (let ((total 0))
-                    (while (re-search-forward
-                            "CLOCK:.*=>[ \t]*\\([0-9]+:[0-9]+\\)" heading-end t)
-                      (setq total
-                            (+ total
-                               (round (org-duration-to-minutes (match-string 1))))))
-                    (when (> total 0)
-                      (setq clock-min total))))
+                  (while (re-search-forward "^[ \t]*- \\(?:State \"DONE\".*\\|CLOSING NOTE\\) *[[<]\\([^]>]+\\)[\]>]" heading-end t)
+                    (let* ((time-str (match-string 1))
+                           (time-obj (ignore-errors (org-time-string-to-time time-str))))
+                      (when time-obj
+                        (let ((key (org-ladder-time-from-emacs time-obj)))
+                          (puthash key (+ (gethash key tbl 0) score) tbl)))))))
 
-                ;; 4. Compute score and accumulate
-                (let* ((default org-ladder-clock-default-duration)
-                       (score
-                        (cond
-                         ((and effort-min clock-min (<= clock-min effort-min))
-                          effort-min)
-                         (clock-min  (max clock-min  default))
-                         (effort-min (max effort-min default))
-                         (t          default)))
-                       (key (org-ladder-time-from-emacs closed-time)))
-                  (puthash key (+ (gethash key tbl 0) score) tbl))))))))
+            ;; ── Normal Task Logic: Completion Bonus ──────────
+            ;; B. Extract CLOSED time
+            (save-excursion
+              (goto-char heading-beg)
+              (let ((limit (min heading-end (save-excursion (forward-line 10) (point)))))
+                (when (re-search-forward "^[ \t]*CLOSED:[ \t]*[[<]\\([^]>]+\\)[\]>]" limit t)
+                  (let ((time-str (match-string 1)))
+                    (setq closed-time (ignore-errors (org-time-string-to-time time-str)))))))
+
+            ;; C. Award Completion Bonus if the task is CLOSED
+            (when closed-time
+              (let* ((closed-key (org-ladder-time-from-emacs closed-time))
+                     (bonus 0))
+                (if (= total-clock 0)
+                    ;; Finished without clocking: award max(effort, default)
+                    (setq bonus (if effort-min
+                                    (max effort-min org-ladder-clock-default-duration)
+                                  org-ladder-clock-default-duration))
+                  ;; Finished with clocking: award remaining effort as bonus (if any)
+                  (when (and effort-min (> effort-min total-clock))
+                    (setq bonus (- effort-min total-clock))))
+
+                (when (> bonus 0)
+                  (puthash closed-key (+ (gethash closed-key tbl 0) bonus) tbl))))))))))
 
 ;;; ── Source function ──────────────────────────────────────────────────────────
 
