@@ -539,7 +539,7 @@ for the GitHub-style heatmap are preserved reliably."
                                      (240 . "⚡ 推进过载")
                                      (360 . "🦸 英雄模式")
                                      (480 . "🏆 传说降临")
-                                     (999999 . "🌌 神话升格")))
+                                     (600 . "🌌 神话升格")))
                  (today-state (catch 'state
                                 (let ((prev (cdar today-thresholds)))
                                   (dolist (entry (cdr today-thresholds) prev)
