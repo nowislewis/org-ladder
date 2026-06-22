@@ -47,26 +47,27 @@
   "Regexp matching an org-sm LOGBOOK review line.  Group 1 = YYYY-MM-DD.")
 
 (defun org-ladder-sm--scan-file (file tbl)
-  "Scan all LOGBOOK blocks in FILE; accumulate day-key scores into TBL."
-  (with-current-buffer (find-file-noselect file t)
-    (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (point-min))
-        (while (re-search-forward "^:LOGBOOK:" nil t)
-          (let* ((lb-start (point))
-                 (lb-end   (save-excursion
-                             (re-search-forward "^:END:" nil t))))
-            (when lb-end
-              (save-excursion
-                (goto-char lb-start)
-                (while (re-search-forward org-ladder-sm--review-re lb-end t)
-                  (let ((key (org-ladder-time-parse-iso (match-string 1))))
-                    (when key
-                      (puthash key
-                               (+ (gethash key tbl 0)
-                                  org-ladder-sm-score-per-review)
-                               tbl))))))))))))
+  "Scan all LOGBOOK blocks in FILE; accumulate day-key scores into TBL.
+Uses a temporary buffer with pure-regexp scanning to avoid the heavy cost
+of fully initializing `org-mode' (font-lock, startup hooks, etc.) for every
+file — `find-file-noselect' on hundreds of files can take many seconds."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (goto-char (point-min))
+    (while (re-search-forward "^:LOGBOOK:" nil t)
+      (let* ((lb-start (point))
+             (lb-end   (save-excursion
+                         (re-search-forward "^:END:" nil t))))
+        (when lb-end
+          (save-excursion
+            (goto-char lb-start)
+            (while (re-search-forward org-ladder-sm--review-re lb-end t)
+              (let ((key (org-ladder-time-parse-iso (match-string 1))))
+                (when key
+                  (puthash key
+                           (+ (gethash key tbl 0)
+                              org-ladder-sm-score-per-review)
+                           tbl))))))))))
 
 (defun org-ladder-sm--collect ()
   "Return ((day-key . score) ...) from all org-sm review LOGBOOK entries."
