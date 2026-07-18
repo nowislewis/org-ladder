@@ -29,9 +29,18 @@
   :prefix "org-ladder-sm-")
 
 (defcustom org-ladder-sm-files nil
-  "Org files to scan for review history.  Must be set explicitly."
-  :type '(repeat file)
+  "Source of org files to scan for review history.
+Either a list of files, or a function of no arguments returning such a
+list.  Prefer a function (e.g. `org-sm-files') so the file set is resolved
+live on each scan instead of captured as a stale snapshot."
+  :type '(choice (repeat file) function)
   :group 'org-ladder-sm)
+
+(defun org-ladder-sm--files ()
+  "Resolve `org-ladder-sm-files' to a concrete list of files."
+  (if (functionp org-ladder-sm-files)
+      (funcall org-ladder-sm-files)
+    org-ladder-sm-files))
 
 (defcustom org-ladder-sm-score-per-review 2
   "Score awarded per review event."
@@ -72,7 +81,7 @@ file — `find-file-noselect' on hundreds of files can take many seconds."
 (defun org-ladder-sm--collect ()
   "Return ((day-key . score) ...) from all org-sm review LOGBOOK entries."
   (let ((tbl (make-hash-table :test 'equal)))
-    (dolist (file org-ladder-sm-files)
+    (dolist (file (org-ladder-sm--files))
       (when (file-exists-p file)
         (condition-case err
             (org-ladder-sm--scan-file file tbl)
