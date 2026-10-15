@@ -21,6 +21,34 @@
         (insert-file-contents file)
         (string-trim (buffer-string))))))
 
+(defun org-ladder-art--available-keys ()
+  "Return chronologically sorted list of YM-STR keys for all .art files."
+  (when (file-directory-p org-ladder-art-directory)
+    (sort (mapcar #'file-name-base
+                  (directory-files org-ladder-art-directory nil "\\.art\\'"))
+          #'string<)))
+
+(defun org-ladder-art--allocations ()
+  "Allocate cumulative total score sequentially across available .art files.
+Each artifact requires 4500 points; points spill into the next artifact once
+the previous one reaches 4500, so no artifact is ever stranded incomplete.
+Return list of (YM-STR ALLOCATED-SCORE ENCODED)."
+  (let ((remaining (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores))))
+        (step 4500)
+        result)
+    (dolist (ym-str (org-ladder-art--available-keys))
+      (when-let* ((encoded (org-ladder-art--get-encoded ym-str)))
+        (let ((alloc (min step (max 0 remaining))))
+          (setq remaining (max 0 (- remaining alloc)))
+          (push (list ym-str alloc encoded) result))))
+    (nreverse result)))
+
+(defun org-ladder-art--active-entry ()
+  "Return the (YM-STR ALLOC ENCODED) currently being excavated, or the last one."
+  (let ((allocs (org-ladder-art--allocations)))
+    (or (cl-find-if (lambda (e) (< (nth 1 e) 4500)) allocs)
+        (car (last allocs)))))
+
 ;; ---------------------------------------------------------
 ;; 2. 开发者工具 (打包并直接生成文件)
 ;; ---------------------------------------------------------
@@ -165,24 +193,32 @@ When TODAY-SCORE is positive, show a small positive signal gain."
 ;; 4. 用户侧入口命令
 ;; ---------------------------------------------------------
 
+(defun org-ladder-art-insert-current (&optional today-score)
+  "Insert the currently-excavating artifact (by cumulative score) at point."
+  (let* ((allocs   (org-ladder-art--allocations))
+         (restored (cl-count-if (lambda (e) (>= (nth 1 e) 4500)) allocs))
+         (entry    (org-ladder-art--active-entry)))
+    (if entry
+        (pcase-let ((`(,ym-str ,alloc ,encoded) entry))
+          (insert (format "  已完整发掘 %d/%d 件  (M-x org-ladder-art-gallery 查看全部)\n"
+                          restored (length allocs)))
+          (org-ladder-art--render-buffer
+           ym-str alloc (org-ladder-art--decrypt encoded) "累计发掘" today-score))
+      (insert (format "  no artifact files in %s\n\n" org-ladder-art-directory)))))
+
 ;;;###autoload
 (defun org-ladder-art-today ()
-  "查看当前赛季 (本月) 的遗迹发掘情况"
+  "查看当前正在按累计存量发掘的遗迹"
   (interactive)
-  (let* ((cur-ym (org-ladder--month-key (current-time)))
-         (ym-str (format "%04d-%02d" (car cur-ym) (cadr cur-ym)))
-         (score (org-ladder-current-score))
-         (encoded (org-ladder-art--get-encoded ym-str)))
+  (let* ((daily-tbl (org-ladder--collect-daily))
+         (today-score (gethash (org-ladder-time-today) daily-tbl 0)))
     (with-current-buffer (get-buffer-create "*Org Ladder Artifact*")
       (let ((inhibit-read-only t))
         (erase-buffer)
-        (if encoded
-            (let* ((daily-tbl (org-ladder--collect-daily))
-                   (today-score (gethash (org-ladder-time-today) daily-tbl 0)))
-              (org-ladder-art--render-buffer
-               ym-str score (org-ladder-art--decrypt encoded) "当前赛季正在发掘" today-score))
-          (insert (propertize (format "【 司令部警告 】\n\n坐标 %s 区域未探测到任何遗迹信号。\n请将有效的加密图鉴档案放入目录: \n%s\n" 
-                                      ym-str org-ladder-art-directory) 
+        (if (org-ladder-art--active-entry)
+            (org-ladder-art-insert-current today-score)
+          (insert (propertize (format "【 司令部警告 】\n\n未探测到任何遗迹档案，请放入目录:\n%s\n"
+                                      org-ladder-art-directory)
                               'face '(:foreground "#F92672"))))
         (goto-char (point-min)))
       (read-only-mode 1)
@@ -190,22 +226,24 @@ When TODAY-SCORE is positive, show a small positive signal gain."
 
 ;;;###autoload
 (defun org-ladder-art-gallery ()
-  "查阅过往所有月份的历史遗迹馆"
+  "查阅按累计存量解锁的遗迹陈列室（永不锁死残缺）"
   (interactive)
-  (let ((scores (org-ladder-calculate-scores))
-        (buf (get-buffer-create "*Org Ladder Gallery*")))
+  (let ((allocs (org-ladder-art--allocations))
+        (total  (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores))))
+        (buf    (get-buffer-create "*Org Ladder Gallery*")))
     (with-current-buffer buf
       (let ((inhibit-read-only t))
         (erase-buffer)
-        (insert (propertize "🏛️ Org Ladder 神经漫游遗迹陈列室 🏛️\n" 'face '(:weight bold :height 1.5 :foreground "#66D9EF")))
-        (insert "分数未达到 4500 (传说) 的月份，遗迹将永远定格在残缺状态。\n\n")
-        (unless scores (insert "暂无历史记录。\n"))
-        (dolist (record scores)
-          (let* ((ym-str (format "%04d-%02d" (nth 0 (car record)) (nth 1 (car record))))
-                 (score (cdr record))
-                 (encoded (org-ladder-art--get-encoded ym-str)))
-            (when encoded
-              (org-ladder-art--render-buffer ym-str score (org-ladder-art--decrypt encoded) "历史档案"))))
+        (insert (propertize "🏛️ Org Ladder 神经漫游遗迹陈列室 🏛️\n"
+                            'face '(:weight bold :height 1.5 :foreground "#66D9EF")))
+        (insert (format "按累计总分依次发掘（每件 4500，当前累计 %d），永不锁死残缺。\n\n" total))
+        (if (null allocs)
+            (insert "暂无遗迹档案。\n")
+          (dolist (entry allocs)
+            (pcase-let ((`(,ym-str ,alloc ,encoded) entry))
+              (when (or (> alloc 0) (eq entry (car allocs)))
+                (org-ladder-art--render-buffer
+                 ym-str alloc (org-ladder-art--decrypt encoded) "累计档案")))))
         (goto-char (point-min)))
       (read-only-mode 1)
       (pop-to-buffer buf))))

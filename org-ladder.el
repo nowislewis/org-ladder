@@ -324,32 +324,35 @@ Cached for 5 minutes; pass FORCE to bypass."
 
 ;;; ── Monthly reset ────────────────────────────────────────────────────────────
 
-(defun org-ladder--save-reset ()
-  "Persist `org-ladder--last-reset-month' to `org-ladder-storage-file'."
-  (with-temp-file org-ladder-storage-file
-    (insert "(setq org-ladder--last-reset-month '")
-    (prin1 org-ladder--last-reset-month (current-buffer))
-    (insert ")\n")))
-
-(defun org-ladder--load-reset ()
-  "Load persisted reset state if the storage file exists."
-  (when (file-exists-p org-ladder-storage-file)
-    (load-file org-ladder-storage-file)))
-
 (defun org-ladder-check-monthly-reset ()
-  "Trigger a monthly reset when today matches `org-ladder-monthly-reset-day'."
-  (org-ladder--load-reset)
-  (let* ((d     (decode-time (current-time)))
-         (year  (nth 5 d)) (month (nth 4 d)) (day (nth 3 d))
-         (ym    (list year month)))
-    (when (and (= day org-ladder-monthly-reset-day)
-               (not (equal org-ladder--last-reset-month ym)))
-      (let ((carry (floor (* (org-ladder-current-score) org-ladder-retention-rate))))
-        (setq org-ladder--last-reset-month ym
-              org-ladder--cache            nil
-              org-ladder--cache-time       nil)
-        (org-ladder--save-reset)
-        (message "Org Ladder: monthly reset — carry-over %d" carry)))))
+  "No-op kept for backward compatibility.
+Season rank is purely decorative; permanent stock is never reset."
+  nil)
+
+(defun org-ladder--insert-badge-shelf (all-scores)
+  "Insert permanent badge shelf from ALL-SCORES."
+  (insert (propertize "🏅 赛季徽章陈列 (永久保留)\n" 'face '(:weight bold :height 1.2)))
+  (let ((counts (make-hash-table :test 'eq))
+        (best   nil))
+    (dolist (entry all-scores)
+      (let* ((sc   (cdr entry))
+             (tier (car (org-ladder-get-tier-info sc))))
+        (puthash tier (1+ (gethash tier counts 0)) counts)
+        (when (or (null best) (> sc (cdr best)))
+          (setq best entry))))
+    (let (parts)
+      (dolist (tc (reverse org-ladder-tiers))
+        (let ((n (gethash (car tc) counts 0)))
+          (when (> n 0)
+            (push (format "%s ×%d" (nth 3 (cdr tc)) n) parts))))
+      (insert (if parts
+                  (format "  %s\n" (string-join (nreverse parts) "   "))
+                "  (暂无赛季记录)\n")))
+    (when best
+      (insert (format "  最高单月  %d-%02d · %d min (%s)\n"
+                      (caar best) (cadar best) (cdr best)
+                      (org-ladder--rank-name (cdr best)))))
+    (insert "\n")))
 
 ;;; ── Display helpers ──────────────────────────────────────────────────────────
 
@@ -473,21 +476,21 @@ for the GitHub-style heatmap are preserved reliably."
             (insert (propertize "────────────────────────────────────────\n\n"
                                 'face '(:foreground "#444444"))))
 
-          ;; ── Artifact progress ──────────────────────────────────────────
-          ;; Load lazily so the first `org-ladder-show-details' can display
+          ;; ── Permanent stock (first screen, never resets) ───────────────
+          (require 'org-ladder-stock nil t)
+          (when (fboundp 'org-ladder-stock-insert-section)
+            (org-ladder-stock-insert-section))
+
+          ;; ── Artifact progress (unlocked by cumulative score) ───────────
           (require 'org-ladder-art nil t)
-          (insert (propertize "🏺 Artifact\n" 'face '(:weight bold :height 1.2)))
-          (if (and (fboundp 'org-ladder-art--get-encoded)
-                   (fboundp 'org-ladder-art--decrypt)
-                   (fboundp 'org-ladder-art--render-buffer))
-              (let* ((ym-str (format "%04d-%02d" cur-year cur-month))
-                     (encoded (org-ladder-art--get-encoded ym-str)))
-                (if encoded
-                    (org-ladder-art--render-buffer
-                     ym-str score (org-ladder-art--decrypt encoded) "Current Season"
-                     (gethash (org-ladder-time-today) daily-tbl 0))
-                  (insert (format "  no artifact file for %s\n\n" ym-str))))
-            (insert "  artifact module not loaded. Run M-x load-library RET org-ladder-art RET\n\n"))
+          (insert (propertize "🏺 Artifact (累计解锁)\n" 'face '(:weight bold :height 1.2)))
+          (if (fboundp 'org-ladder-art-insert-current)
+              (org-ladder-art-insert-current
+               (gethash (org-ladder-time-today) daily-tbl 0))
+            (insert "  artifact module not loaded.\n\n"))
+
+          ;; ── Permanent badge shelf ──────────────────────────────────────
+          (org-ladder--insert-badge-shelf all-scores)
 
           ;; ── GitHub style 14-day heatmap ────────────────────────────────
           (insert (propertize "🔥 Activity\n" 'face '(:weight bold :height 1.2)))
@@ -521,8 +524,8 @@ for the GitHub-style heatmap are preserved reliably."
                      (when (= i 7) (insert "\n  ")))
             (insert (format "\n  streak: %d days    best day: %d min\n\n" streak best-day)))
 
-          ;; ── Tier / projection ──────────────────────────────────────────
-          (insert (propertize "📈 Rank\n" 'face '(:weight bold :height 1.2)))
+          ;; ── Tier / projection (decorative season layer) ────────────────
+          (insert (propertize "📈 Season (本月装饰)\n" 'face '(:weight bold :height 1.2)))
           (let* ((day-now     (nth 3 (decode-time (current-time))))
                  (days-total  (calendar-last-day-of-month cur-month cur-year))
                  (avg-daily   (if (> day-now 0) (/ (float score) day-now) 0))
@@ -583,6 +586,7 @@ for the GitHub-style heatmap are preserved reliably."
 ;;; ── Load default source ──────────────────────────────────────────────────────
 
 (require 'org-ladder-clock)
+(require 'org-ladder-stock)
 
 (provide 'org-ladder)
 ;;; org-ladder.el ends here
