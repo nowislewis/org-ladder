@@ -168,27 +168,27 @@ accumulated during an `org-sm' review session.")
            org-ladder-stock-boss-threshold)))
 
 (defun org-ladder-sm-banner (card)
-  "Return left-anchored stage / Boss identity string for CARD plist."
+  "Return left-anchored stage / Monster identity string for CARD plist."
   (let ((type (plist-get card :type))
         (days (plist-get card :interval-days))
         (rev  (or (plist-get card :reviews) 0))
         (ct   (or (plist-get card :child-topics) 0))
         (cc   (or (plist-get card :child-clozes) 0)))
     (cond
-     ((org-ladder-sm--boss-card-p card)
-      (let ((sub (cond ((and (> ct 0) (> cc 0)) (format " · %dT/%dC" ct cc))
-                       ((> cc 0) (format " · %dC" cc))
-                       ((> ct 0) (format " · %dT" ct))
-                       (t ""))))
-        (format "⚔️ Boss · %d次%s" rev sub)))
+     ((eq type 'topic)
+      (let ((label (org-ladder-stock-monster-display
+                    (org-ladder-stock-monster rev)))
+            (sub   (cond ((and (> ct 0) (> cc 0)) (format " · %dT/%dC" ct cc))
+                         ((> cc 0) (format " · %dC" cc))
+                         ((> ct 0) (format " · %dT" ct))
+                         ((and days (> days 0)) (format " · %dd" days))
+                         (t ""))))
+        (format "%s · %d次%s" label rev sub)))
      ((eq type 'cloze)
       (let ((stage (or (org-ladder-sm--stage-label (or days 0)) "🌱 幼苗")))
         (if (and days (> days 0))
             (format "%s · %dd" stage days)
-          (format "%s · 新卡" stage))))
-     ((eq type 'topic)
-      (format "📖 Topic · %d次%s" rev
-              (if (and days (> days 0)) (format " · %dd" days) ""))))))
+          (format "%s · 新卡" stage)))))))
 
 (defun org-ladder-sm--hud-hide-p (_info)
   "Auto-hide persistent HUD when leaving the review card or workbench."
