@@ -1,0 +1,10 @@
+(:title "\u7089\u77f3\u4f20\u8bf4\u0020\u00b7\u0020\u91d1\u8272\u4f20\u8bf4\u5361\u80cc\u738b\u51a0"
+ :lore "\u95ea\u8000\u593a\u76ee\u7684\u5341\u4e8c\u80dc\u7ade\u6280\u573a\u91d1\u51a0\u4e0e\u70bd\u70ed\u5b9d\u77f3\u3002\u6bcf\u4e00\u8f6e\u5b8c\u6574\u7684\u590d\u4e60\u8fdc\u5f81\uff0c\u90fd\u5728\u4e3a\u4f60\u7684\u724c\u5e93\u9540\u91d1\u3002"
+ :shapes
+ ((rect 46 22 172 198 :fill "#B45309" :stroke "#FDE047" :stroke-width 4 :rx 16 :ry 16)
+           (rect 60 36 144 170 :fill "#1E293B" :stroke "#FACC15" :stroke-width 2.5 :rx 10 :ry 10)
+           (poly ((78 . 142) (92 . 78) (116 . 108) (132 . 66) (148 . 108) (172 . 78) (186 . 142)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((132 . 96) (152 . 124) (132 . 152) (112 . 124)) :fill "#F43F5E" :stroke "#FEF08A" :stroke-width 2)
+           (circle 92 74 6 :fill "#38BDF8")
+           (circle 132 62 7 :fill "#F97316")
+           (circle 172 74 6 :fill "#38BDF8")))

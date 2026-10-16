@@ -1,0 +1,9 @@
+(:title "\u5361\u5229\u4e9a\u738b\u5ba4\u6743\u6756\u0020\u00b7\u0020\u6ee1\u6708\u8f89\u77f3"
+ :lore "\u9576\u5d4c\u6df1\u9083\u84dd\u8f89\u77f3\u7684\u9b54\u6cd5\u6743\u6756\u3002\u7ed3\u6784\u5316\u7684\u6982\u5ff5\u7f51\u7edc\uff0c\u80fd\u628a\u96f6\u6563\u7b97\u529b\u6298\u5c04\u6210\u500d\u589e\u7684\u6d1e\u5bdf\u3002"
+ :shapes
+ ((circle 132 76 54 :fill "#0284C7" :opacity "0.24")
+           (poly ((124 . 118) (140 . 118) (138 . 234) (126 . 234)) :fill "#CA8A04" :stroke "#0F172A" :stroke-width 2)
+           (poly ((96 . 112) (76 . 68) (96 . 22) (132 . 14) (116 . 42) (106 . 78) (124 . 108)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((168 . 112) (188 . 68) (168 . 22) (132 . 14) (148 . 42) (158 . 78) (140 . 108)) :fill "#EAB308" :stroke "#0F172A" :stroke-width 2)
+           (poly ((132 . 36) (156 . 72) (132 . 108) (108 . 72)) :fill "#38BDF8" :stroke "#E0F2FE" :stroke-width 2)
+           (poly ((132 . 48) (144 . 72) (132 . 96) (120 . 72)) :fill "#E0F2FE")))

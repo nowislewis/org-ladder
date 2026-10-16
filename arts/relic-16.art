@@ -1,0 +1,11 @@
+(:title "\u7089\u77f3\u4f20\u8bf4\u0020\u00b7\u0020\u6cd5\u529b\u6c34\u6676\u4e0e\u5965\u672f\u79d8\u5178"
+ :lore "\u9971\u6ee1\u7684\u5341\u8d39\u84dd\u6c34\u6676\u70b9\u4eae\u724c\u684c\u3002\u9ad8\u9636\u601d\u7ef4\u6a21\u578b\u7684\u8c03\u7528\uff0c\u6e90\u4e8e\u5e95\u5c42\u6982\u5ff5\u6cd5\u529b\u6c60\u7684\u5145\u76c8\u3002"
+ :shapes
+ ((poly ((132 . 16) (198 . 68) (176 . 184) (132 . 224) (88 . 184) (66 . 68)) :fill "#0284C7" :stroke "#E0F2FE" :stroke-width 2.5)
+           (poly ((132 . 16) (198 . 68) (132 . 118) (66 . 68)) :fill "#38BDF8")
+           (poly ((132 . 16) (158 . 68) (132 . 224) (106 . 68)) :fill "#7DD3FC" :opacity "0.65")
+           (poly ((132 . 54) (162 . 88) (132 . 176) (102 . 88)) :fill "#E0F2FE")
+           (circle 54 118 8 :fill "#38BDF8")
+           (circle 210 118 8 :fill "#38BDF8")
+           (circle 76 42 5 :fill "#E0F2FE")
+           (circle 188 42 5 :fill "#E0F2FE")))

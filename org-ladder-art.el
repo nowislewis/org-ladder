@@ -182,22 +182,6 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
       (insert (format "  no artifact files in %s\n\n" org-ladder-art-directory)))))
 
 ;;;###autoload
-(defun org-ladder-art-today ()
-  "Display the currently excavating artifact."
-  (interactive)
-  (let* ((daily-tbl (org-ladder--collect-daily))
-         (today-score (gethash (org-ladder-time-today) daily-tbl 0)))
-    (with-current-buffer (get-buffer-create "*Org Ladder Artifact*")
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (if (org-ladder-art--active-entry)
-            (org-ladder-art-insert-current today-score)
-          (insert (format "未探测到任何遗迹档案: %s\n" org-ladder-art-directory)))
-        (goto-char (point-min)))
-      (special-mode)
-      (pop-to-buffer (current-buffer)))))
-
-;;;###autoload
 (defun org-ladder-art-gallery ()
   "Display the cumulative artifact gallery."
   (interactive)

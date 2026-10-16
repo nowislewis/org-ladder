@@ -1,0 +1,13 @@
+(:title "\u6697\u6708\u9b54\u5973\u83c8\u59ae\u0020\u00b7\u0020\u7fa4\u661f\u738b\u5ba4\u6697\u6708"
+ :lore "\u53cc\u751f\u6708\u5f71\u4e0e\u5bd2\u51b0\u9b54\u6cd5\u5e3d\u6a90\u4ea4\u53e0\u3002\u8fdb\u5165\u65e0\u4eba\u8e0f\u8db3\u7684\u7fa4\u661f\u65f6\u4ee3\uff0c\u9700\u8981\u51b7\u9759\u800c\u5b64\u9ad8\u7684\u6c42\u77e5\u6b32\u3002"
+ :shapes
+ ((circle 144 106 72 :fill "#1E3A8A")
+           (circle 120 100 66 :fill "#38BDF8")
+           (circle 136 96 54 :fill "#0D1117")
+           (poly ((22 . 148) (132 . 42) (242 . 148) (198 . 162) (132 . 136) (66 . 162)) :fill "#F8FAFC" :stroke "#38BDF8" :stroke-width 2.5)
+           (poly ((82 . 136) (132 . 116) (182 . 136) (168 . 212) (132 . 226) (96 . 212)) :fill "#1E293B" :stroke "#38BDF8" :stroke-width 2)
+           (circle 112 166 5 :fill "#7DD3FC")
+           (circle 152 166 5 :fill "#60A5FA")
+           (circle 54 62 4 :fill "#E0F2FE")
+           (circle 208 58 3.5 :fill "#E0F2FE")
+           (circle 196 196 4 :fill "#7DD3FC")))

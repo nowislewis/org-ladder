@@ -1,0 +1,17 @@
+(:title "\u788e\u661f\u62c9\u5854\u6069\u0020\u00b7\u0020\u7ea2\u72ee\u5b50\u91cd\u94e0\u53cc\u5203"
+ :lore "\u91cd\u529b\u7d2b\u8292\u7f20\u7ed5\u7684\u5de8\u578b\u53cc\u66f2\u5251\u4e0e\u8d64\u7ea2\u9b03\u6bdb\u5c06\u519b\u76d4\u3002\u4ee5\u4e00\u5df1\u4e4b\u529b\u6258\u4e3e\u7fa4\u661f\u7684\u5b9a\u529b\u3002"
+ :shapes
+ ((circle 132 120 82 :fill "#7E22CE" :opacity "0.22")
+           (circle 132 120 58 :fill "none" :stroke "#A855F7" :stroke-width 2.5)
+           (poly ((42 . 88) (88 . 22) (112 . 48) (74 . 118)) :fill "#DC2626")
+           (poly ((222 . 88) (176 . 22) (152 . 48) (190 . 118)) :fill "#B91C1C")
+           (poly ((76 . 92) (34 . 28) (24 . 66) (54 . 124) (86 . 136)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((188 . 92) (230 . 28) (240 . 66) (210 . 124) (178 . 136)) :fill "#EAB308" :stroke "#0F172A" :stroke-width 2)
+           (poly ((82 . 78) (132 . 58) (182 . 78) (190 . 162) (132 . 194) (74 . 162)) :fill "#CA8A04" :stroke "#0F172A" :stroke-width 2.5)
+           (poly ((96 . 114) (168 . 114) (160 . 142) (104 . 142)) :fill "#090D16")
+           (poly ((104 . 122) (124 . 126) (120 . 134) (102 . 130)) :fill "#C084FC")
+           (poly ((160 . 122) (140 . 126) (144 . 134) (162 . 130)) :fill "#C084FC")
+           (poly ((96 . 152) (110 . 178) (122 . 156)) :fill "#F8FAFC")
+           (poly ((168 . 152) (154 . 178) (142 . 156)) :fill "#F8FAFC")
+           (poly ((48 . 222) (118 . 182) (126 . 196) (58 . 234)) :fill "#475569" :stroke "#A855F7" :stroke-width 2)
+           (poly ((216 . 222) (146 . 182) (138 . 196) (206 . 234)) :fill "#475569" :stroke "#A855F7" :stroke-width 2)))

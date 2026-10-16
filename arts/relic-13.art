@@ -1,0 +1,19 @@
+(:title "\u004d\u0053\u005a\u002d\u0030\u0030\u0036\u0020\u005a\u9ad8\u8fbe\u0020\u00b7\u0020\u7a7f\u8d8a\u5b87\u5b99\u7684\u95ea\u5149"
+ :lore "\u9510\u5229\u7684\u957f\u8138\u9762\u7f69\u4e0e\u56db\u7ffc\u5929\u7ebf\u5212\u7834\u661f\u6d77\u3002\u53d8\u5f62\u7ed3\u6784\u4ee3\u8868\u77e5\u8bc6\u5728\u7406\u8bba\u4e0e\u5de5\u7a0b\u95f4\u7684\u81ea\u7531\u5207\u6362\u3002"
+ :shapes
+ ((poly ((32 . 235) (64 . 178) (200 . 178) (232 . 235)) :fill "#1D4ED8" :stroke "#0F172A" :stroke-width 2)
+           (poly ((52 . 196) (96 . 190) (92 . 224) (46 . 224)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 1.5)
+           (poly ((212 . 196) (168 . 190) (172 . 224) (218 . 224)) :fill "#EAB308" :stroke "#0F172A" :stroke-width 1.5)
+           (poly ((106 . 178) (158 . 178) (150 . 235) (114 . 235)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2)
+           (poly ((82 . 60) (132 . 42) (182 . 60) (190 . 124) (168 . 172) (132 . 184) (96 . 172) (74 . 124)) :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 2.5)
+           (poly ((92 . 94) (172 . 94) (166 . 118) (132 . 124) (98 . 118)) :fill "#0F172A")
+           (poly ((98 . 99) (124 . 103) (122 . 113) (100 . 111)) :fill "#4ADE80")
+           (poly ((166 . 99) (140 . 103) (142 . 113) (164 . 111)) :fill "#4ADE80")
+           (poly ((106 . 118) (132 . 112) (158 . 118) (148 . 172) (132 . 182) (116 . 172)) :fill "#FFFFFF" :stroke "#0F172A" :stroke-width 2)
+           (poly ((122 . 162) (142 . 162) (138 . 180) (126 . 180)) :fill "#E11D48")
+           (poly ((132 . 82) (18 . 18) (36 . 42) (120 . 88)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((132 . 82) (246 . 18) (228 . 42) (144 . 88)) :fill "#EAB308" :stroke "#0F172A" :stroke-width 2)
+           (poly ((132 . 76) (42 . 46) (56 . 62) (122 . 84)) :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 1.5)
+           (poly ((132 . 76) (222 . 46) (208 . 62) (142 . 84)) :fill "#E2E8F0" :stroke "#0F172A" :stroke-width 1.5)
+           (poly ((120 . 46) (144 . 46) (140 . 88) (124 . 88)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2)
+           (poly ((125 . 54) (139 . 54) (138 . 72) (126 . 72)) :fill "#38BDF8")))
