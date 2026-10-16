@@ -53,10 +53,11 @@ Return list of (YM-STR ALLOCATED-SCORE ENCODED)."
 ;; 2. 开发者工具 (打包并直接生成文件)
 ;; ---------------------------------------------------------
 
-(defun org-ladder-art-pack-to-file (ym-str title lore art)
+(defun org-ladder-art-pack-to-file (ym-str title lore art &optional palette)
   "【维护工具】将图鉴加密并保存到对应月份的文件中。
-例如: (org-ladder-art-pack-to-file \"2026-05\" \"标题\" \"故事\" \"字符画\")"
-  (let* ((plist-data (list :version 1 :title title :lore lore :art art))
+PALETTE 可选 plist (:color1 HEX :color2 HEX :color3 HEX :accent HEX)。"
+  (let* ((plist-data (append (list :version 2 :title title :lore lore :art art)
+                             palette))
          (str-data (prin1-to-string plist-data))
          (b64 (base64-encode-string (encode-coding-string str-data 'utf-8) t))
          (dir org-ladder-art-directory)
@@ -75,12 +76,27 @@ Return list of (YM-STR ALLOCATED-SCORE ENCODED)."
 ;; ---------------------------------------------------------
 
 (defface org-ladder-art-fog-face
-  '((t :foreground "#444444" :inherit fixed-pitch))
-  "未发掘区域 (暗灰)")
+  '((t :foreground "#2E3440" :inherit fixed-pitch))
+  "未发掘区域 (暗雾)"
+  :group 'org-ladder)
 
 (defface org-ladder-art-reveal-face
   '((t :foreground "#A6E22E" :weight bold :inherit fixed-pitch))
-  "已发掘区域 (亮绿)")
+  "已发掘区域 (默认亮绿)"
+  :group 'org-ladder)
+
+(defun org-ladder-art--pixel-face (ch item)
+  "Return the face for revealed pixel character CH in ITEM."
+  (let ((c1 (or (plist-get item :color1) "#A6E22E"))
+        (c2 (or (plist-get item :color2) "#66D9EF"))
+        (c3 (or (plist-get item :color3) "#75715E"))
+        (ac (or (plist-get item :accent) "#E6DB74")))
+    (pcase ch
+      ((or ?█ ?▀ ?▄) `(:foreground ,c1 :weight bold :inherit fixed-pitch))
+      (?▓            `(:foreground ,c2 :inherit fixed-pitch))
+      ((or ?▒ ?░)    `(:foreground ,c3 :inherit fixed-pitch))
+      ((or ?◆ ?★ ?● ?✦ ?▲ ?▼) `(:foreground ,ac :weight bold :inherit fixed-pitch))
+      (_             `(:foreground ,c1 :weight bold :inherit fixed-pitch)))))
 
 (defun org-ladder-art--pad (art)
   "将 ASCII 补齐为完美矩形防止轮廓剧透"
@@ -169,8 +185,8 @@ When TODAY-SCORE is positive, show a small positive signal gain."
           (dotimes (x art-width)
             (let ((c (aref line x)))
               (insert (if (gethash global-index unlocked-table)
-                          (propertize (string c) 'face 'org-ladder-art-reveal-face)
-                        (propertize "▓" 'face 'org-ladder-art-fog-face)))
+                          (propertize (string c) 'face (org-ladder-art--pixel-face c item))
+                        (propertize "░" 'face 'org-ladder-art-fog-face)))
               (setq global-index (1+ global-index))))
           (insert (make-string right-pad ?\s))
           ;; account for the newline in ART-PADDED
@@ -200,8 +216,10 @@ When TODAY-SCORE is positive, show a small positive signal gain."
          (entry    (org-ladder-art--active-entry)))
     (if entry
         (pcase-let ((`(,ym-str ,alloc ,encoded) entry))
-          (insert (format "  已完整发掘 %d/%d 件  (M-x org-ladder-art-gallery 查看全部)\n"
-                          restored (length allocs)))
+          (insert (format "  已完整发掘 %d/%d 件  " restored (length allocs))
+                  (buttonize "[🏛️ 查看遗迹陈列室]"
+                             (lambda (_) (org-ladder-art-gallery)))
+                  "\n")
           (org-ladder-art--render-buffer
            ym-str alloc (org-ladder-art--decrypt encoded) "累计发掘" today-score))
       (insert (format "  no artifact files in %s\n\n" org-ladder-art-directory)))))

@@ -242,9 +242,9 @@ Cached for 5 minutes; pass FORCE to bypass."
       (dolist (tc (reverse org-ladder-tiers))
         (let ((n (gethash (car tc) counts 0)))
           (when (> n 0)
-            (push (format "%s ×%d" (nth 3 (cdr tc)) n) parts))))
+            (push (format "%-12s ×%d" (nth 3 (cdr tc)) n) parts))))
       (insert (if parts
-                  (format "  %s\n" (string-join (nreverse parts) "   "))
+                  (format "  %s\n" (string-join (nreverse parts) "\n  "))
                 "  (暂无赛季记录)\n")))
     (when best
       (insert (format "  最高单月  %d-%02d · %d min (%s)\n"
