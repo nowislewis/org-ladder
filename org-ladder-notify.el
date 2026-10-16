@@ -29,12 +29,12 @@
   :prefix "org-ladder-notify-")
 
 (defface org-ladder-notify-title-face
-  '((t :inherit bold))
+  '((t :weight bold :height 1.3))
   "Face for the notification title / current-item line."
   :group 'org-ladder-notify)
 
 (defface org-ladder-notify-body-face
-  '((t :inherit shadow))
+  '((t :inherit default))
   "Face for secondary body / previous-item lines."
   :group 'org-ladder-notify)
 
