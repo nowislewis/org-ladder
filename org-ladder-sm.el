@@ -141,14 +141,14 @@ accumulated during an `org-sm' review session.")
            org-ladder-stock-boss-threshold)))
 
 (defun org-ladder-sm-banner (card)
-  "Return Boss banner string for CARD when it is a Boss topic, else nil."
+  "Return concise Boss banner string for CARD when it is a Boss topic, else nil."
   (when (org-ladder-sm--boss-card-p card)
     (let ((rev (or (plist-get card :reviews) 0))
           (ct  (or (plist-get card :child-topics) 0))
           (cc  (or (plist-get card :child-clozes) 0)))
       (if (> (+ ct cc) 0)
-          (format "⚔️ Boss [已削血: %dT/%dC] (已照面 %d 次)" ct cc rev)
-        (format "⚔️ Boss (已照面 %d 次 · 0 cloze)" rev)))))
+          (format "⚔️ Boss · %d次 · 削血 %dT/%dC" rev ct cc)
+        (format "⚔️ Boss · %d次 · 0子卡" rev)))))
 
 (defun org-ladder-sm--on-card-change (_event)
   "Invalidate derived score caches after any card mutation."
@@ -174,21 +174,20 @@ accumulated during an `org-sm' review session.")
   "Format echo-area feedback for `org-sm' review EVENT."
   (let ((action (plist-get event :action))
         (card   (plist-get event :card))
-        (rating (plist-get event :rating))
         (old    (plist-get event :old-days))
         (new    (plist-get event :new-days)))
     (cond
      ((eq action 'dismiss)
       (if (org-ladder-sm--boss-card-p card)
-          (format "🏆 击败 Boss！(共照面 %d 次 · 产出 %d 张子卡)"
+          (format "🏆 击败 Boss (%d次 · %d子卡)"
                   (or (plist-get card :reviews) 0)
                   (+ (or (plist-get card :child-topics) 0)
                      (or (plist-get card :child-clozes) 0)))
-        "已筛选 (计入处理量)"))
+        "已筛选"))
      ((org-ladder-sm--promoted-stage event)
       (let ((prom (org-ladder-sm--promoted-stage event)))
-        (format "cloze %s · %dd → %dd (%s → %s)"
-                rating (or old 0) new (car prom) (cdr prom))))
+        (format "%dd → %dd  %s → %s"
+                (or old 0) new (car prom) (cdr prom))))
      ((fboundp 'org-sm-default-feedback)
       (org-sm-default-feedback event))
      (t (format "%s" action)))))
