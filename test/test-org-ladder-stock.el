@@ -63,6 +63,13 @@
 (ert-deftest org-ladder-sm-boss-banner-kill-and-bonfire ()
   "Verify Boss banner, Boss kill feedback, Cloze stage promotion, and bonfire."
   (org-ladder-sm--reset-session)
+  (setq org-ladder-sm--stock-snapshot
+        (list :stages (list (cons 'seedling 8) (cons 'plant 16)
+                            (cons 'evergreen 52) (cons 'ancient 37)
+                            (cons 'elder 6))
+              :scheduled 119 :unscheduled 31 :dismissed 126
+              :boss-slain 67 :boss-active 48 :boss-wounded 0
+              :topic-pool 202 :total 500))
   (let ((boss-unextracted '(:type topic :title "T1" :reviews 11
                             :child-topics 0 :child-clozes 0))
         (boss-wounded     '(:type topic :title "T2" :reviews 8
@@ -72,13 +79,13 @@
     (let ((cloze-evergreen '(:type cloze :title "C2" :reviews 3 :interval-days 42
                              :child-topics 0 :child-clozes 0)))
       (should (equal (org-ladder-sm-banner boss-unextracted)
-                     "⚔️ Boss · 11次 · 0子卡"))
+                     "⚔️ Boss · 11次"))
       (should (equal (org-ladder-sm-banner boss-wounded)
-                     "⚔️ Boss · 8次 · 削血 2T/1C"))
+                     "⚔️ Boss · 8次 · 2T/1C"))
       (should (equal (org-ladder-sm-banner cloze-card)
-                     "🌱 幼苗 (新卡)"))
+                     "🌱 幼苗 · 新卡"))
       (should (equal (org-ladder-sm-banner cloze-evergreen)
-                     "🌲 常青 (42d)")))
+                     "🌲 常青 · 42d")))
     (let ((ev-promote (list :action 'cloze :card cloze-card
                             :rating :good :old-days 25 :new-days 42 :session t))
           (ev-same    (list :action 'cloze :card cloze-card
@@ -88,13 +95,13 @@
       (org-ladder-sm--on-review-event ev-promote)
       (org-ladder-sm--on-review-event ev-kill)
       (should (equal (org-ladder-sm-feedback ev-promote)
-                     "✨ 25d → 42d  🌿 成株 → 🌲 常青"))
+                     "25d → 42d  🌲 常青 +1 (共 53)"))
       (should (equal (org-ladder-sm-feedback ev-same)
-                     "42d → 65d · 🌲 常青"))
+                     "42d → 65d"))
       (should (equal (org-ladder-sm-feedback ev-kill)
-                     "🏆 击败 Boss (8次 · 3子卡)"))
+                     "🏆 Boss 讨伐 +1 (累计 68 · 剩 47)"))
       (should (equal (org-ladder-sm-bonfire-text)
-                     "🔥 篝火小结 · 本次处理 2 张（复习 1 · 击败 Boss 1） · 升阶 🌲 常青")))))
+                     "🔥 篝火小结 · 本次处理 2 张（复习 1 · 击败 Boss 1） · 升阶 🌲 常青 +1 (共 53)")))))
 
 (ert-deftest org-ladder-sm-session-isolation-and-cache-invalidation ()
   (let ((org-ladder-sm--session-stats nil)
@@ -139,16 +146,16 @@
                 (should (org-sm--current-review-card-p))
                 (should-not (local-variable-p 'header-line-format))
                 (should (equal org-ladder-notify-last-text
-                               "当前 [SM 1/2] · ⚔️ Boss · 5次 · 削血 0T/1C"))
+                               "⚔️ Boss · 5次 · 1C   [1/2]"))
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
                 (should (equal org-ladder-notify-last-text
-                               "当前 [SM 2/2] · 🌱 幼苗 (新卡) · hidden\n上张 ✓ 🏆 击败 Boss (5次 · 1子卡)"))
+                               "🌱 幼苗 · 新卡 · hidden   [2/2]\n✓ 🏆 Boss 讨伐 +1 (累计 1 · 剩 0)"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
                 (should (equal org-ladder-notify-last-text
-                               "当前 [SM 2/2] · 🌱 幼苗 (新卡) · revealed"))
+                               "🌱 幼苗 · 新卡 · revealed   [2/2]"))
                 (cl-letf (((symbol-function 'read-multiple-choice)
                            (lambda (&rest _) '(?r "good"))))
                   (org-sm-review-confirm))

@@ -105,13 +105,38 @@ file — `find-file-noselect' on hundreds of files can take many seconds."
 ;;; ── Live review integration (Forest stages, Boss banner/kill, Bonfire) ──────
 
 (defvar org-ladder-sm--session-stats nil
-  "Plist (:reviewed N :dismissed N :boss-slain N :promoted (STAGE-DISPLAY ...))
+  "Plist (:reviewed N :dismissed N :boss-slain N :promoted (STAGE-GAIN ...))
 accumulated during an `org-sm' review session.")
 
+(defvar org-ladder-sm--stock-snapshot nil
+  "Mutable stock summary plist captured once per session for O(1) ledger deltas.")
+
 (defun org-ladder-sm--reset-session ()
-  "Reset session counters at the start of an `org-sm' review."
+  "Reset session counters and lazy stock snapshot at the start of a review."
   (setq org-ladder-sm--session-stats
-        (list :reviewed 0 :dismissed 0 :boss-slain 0 :promoted nil)))
+        (list :reviewed 0 :dismissed 0 :boss-slain 0 :promoted nil)
+        org-ladder-sm--stock-snapshot nil))
+
+(defun org-ladder-sm--ensure-snapshot ()
+  "Return the session's mutable stock summary plist, initializing it once."
+  (unless org-ladder-sm--stock-snapshot
+    (let ((sum (ignore-errors (org-ladder-stock-summary))))
+      (setq org-ladder-sm--stock-snapshot
+            (if (and sum (> (or (plist-get sum :total) 0) 0))
+                (copy-tree sum)
+              (list :stages (mapcar (lambda (s) (cons (car s) 0))
+                                    org-ladder-stock-stages)
+                    :scheduled 0 :unscheduled 0 :dismissed 0
+                    :boss-slain 0 :boss-active 0 :boss-wounded 0
+                    :topic-pool 0 :total 0)))))
+  org-ladder-sm--stock-snapshot)
+
+(defun org-ladder-sm--stage-incf (stage delta)
+  "Add DELTA to STAGE in the session stock snapshot and return the new count."
+  (let* ((snap (org-ladder-sm--ensure-snapshot))
+         (cell (assq stage (plist-get snap :stages))))
+    (when cell
+      (setcdr cell (max 0 (+ (cdr cell) delta))))))
 
 (defun org-ladder-sm--stage-label (days)
   "Return Forest stage display string for DAYS, or nil."
@@ -139,7 +164,7 @@ accumulated during an `org-sm' review session.")
            org-ladder-stock-boss-threshold)))
 
 (defun org-ladder-sm-banner (card)
-  "Return stage / Boss banner string for CARD plist."
+  "Return left-anchored stage / Boss identity string for CARD plist."
   (let ((type (plist-get card :type))
         (days (plist-get card :interval-days))
         (rev  (or (plist-get card :reviews) 0))
@@ -147,30 +172,36 @@ accumulated during an `org-sm' review session.")
         (cc   (or (plist-get card :child-clozes) 0)))
     (cond
      ((org-ladder-sm--boss-card-p card)
-      (if (> (+ ct cc) 0)
-          (format "⚔️ Boss · %d次 · 削血 %dT/%dC" rev ct cc)
-        (format "⚔️ Boss · %d次 · 0子卡" rev)))
+      (let ((sub (cond ((and (> ct 0) (> cc 0)) (format " · %dT/%dC" ct cc))
+                       ((> cc 0) (format " · %dC" cc))
+                       ((> ct 0) (format " · %dT" ct))
+                       (t ""))))
+        (format "⚔️ Boss · %d次%s" rev sub)))
      ((eq type 'cloze)
       (let ((stage (or (org-ladder-sm--stage-label (or days 0)) "🌱 幼苗")))
         (if (and days (> days 0))
-            (format "%s (%dd)" stage days)
-          (format "%s (新卡)" stage))))
+            (format "%s · %dd" stage days)
+          (format "%s · 新卡" stage))))
      ((eq type 'topic)
-      (format "📖 阅读池 (%d次%s)" rev
+      (format "📖 Topic · %d次%s" rev
               (if (and days (> days 0)) (format " · %dd" days) ""))))))
 
 (defun org-ladder-sm-prompt (state)
-  "Present review STATE in the bottom-right HUD with clear 当前 / 上张 lines."
-  (let* ((card   (plist-get state :card))
-         (pos    (or (plist-get state :position) "SM"))
-         (ban    (org-ladder-sm-banner card))
-         (cstate (when (eq (plist-get card :type) 'cloze)
-                   (if (eq (plist-get state :cloze-state) 'hidden)
-                       "hidden" "revealed")))
-         (prev   (plist-get state :prev))
-         (title  (format "当前 [%s] · %s"
-                         pos (string-join (delq nil (list ban cstate)) " · ")))
-         (body   (and prev (format "上张 ✓ %s" prev))))
+  "Present review STATE in the bottom-right HUD with stage on the left."
+  (let* ((card    (plist-get state :card))
+         (raw-pos (or (plist-get state :position) "SM"))
+         (pos     (if (string-match "\\([0-9]+/[0-9]+\\)" raw-pos)
+                      (format "[%s]" (match-string 1 raw-pos))
+                    (format "[%s]" raw-pos)))
+         (ban     (org-ladder-sm-banner card))
+         (cstate  (when (eq (plist-get card :type) 'cloze)
+                    (if (eq (plist-get state :cloze-state) 'hidden)
+                        "hidden" "revealed")))
+         (prev    (plist-get state :prev))
+         (title   (format "%s   %s"
+                          (string-join (delq nil (list ban cstate)) " · ")
+                          pos))
+         (body    (and prev (format "✓ %s" prev))))
     (when-let* ((fallback (org-ladder-notify body :title title)))
       (message "%s" (replace-regexp-in-string "\n" "  |  " fallback)))))
 
@@ -179,45 +210,73 @@ accumulated during an `org-sm' review session.")
   (setq org-ladder--cache nil org-ladder--cache-time nil))
 
 (defun org-ladder-sm--on-review-event (event)
-  "Accumulate only completed actions belonging to the active review session."
+  "Accumulate session stats and O(1) stock ledger deltas for EVENT."
   (when (and (plist-get event :session)
              (memq (plist-get event :action) '(topic cloze dismiss)))
     (unless org-ladder-sm--session-stats (org-ladder-sm--reset-session))
-  (let ((action (plist-get event :action))
-        (card   (plist-get event :card)))
-    (if (eq action 'dismiss)
-        (if (org-ladder-sm--boss-card-p card)
-            (cl-incf (plist-get org-ladder-sm--session-stats :boss-slain))
-          (cl-incf (plist-get org-ladder-sm--session-stats :dismissed)))
-      (cl-incf (plist-get org-ladder-sm--session-stats :reviewed))
-      (when-let* ((prom (org-ladder-sm--promoted-stage event)))
-        (push (cdr prom)
-              (plist-get org-ladder-sm--session-stats :promoted)))))))
+    (let ((action (plist-get event :action))
+          (card   (plist-get event :card))
+          (old    (plist-get event :old-days))
+          (new    (plist-get event :new-days))
+          (snap   (org-ladder-sm--ensure-snapshot)))
+      (if (eq action 'dismiss)
+          (if (org-ladder-sm--boss-card-p card)
+              (let ((slain (cl-incf (plist-get snap :boss-slain)))
+                    (left  (setf (plist-get snap :boss-active)
+                                 (max 0 (1- (or (plist-get snap :boss-active) 0))))))
+                (cl-incf (plist-get org-ladder-sm--session-stats :boss-slain))
+                (plist-put event :ledger-slain slain)
+                (plist-put event :ledger-left left))
+            (let ((dis (cl-incf (plist-get snap :dismissed))))
+              (cl-incf (plist-get org-ladder-sm--session-stats :dismissed))
+              (plist-put event :ledger-dismissed dis)))
+        (cl-incf (plist-get org-ladder-sm--session-stats :reviewed))
+        (when (and (eq action 'cloze) (eq (plist-get card :type) 'cloze)
+                   new (> new 0))
+          (let ((old-st (and old (> old 0) (org-ladder-stock-stage old)))
+                (new-st (org-ladder-stock-stage new)))
+            (when (not (eq old-st new-st))
+              (when old-st (org-ladder-sm--stage-incf old-st -1))
+              (let* ((cnt (org-ladder-sm--stage-incf new-st 1))
+                     (lbl (org-ladder-stock-stage-display new-st))
+                     (gain (format "%s +1 (共 %d)" lbl cnt)))
+                (plist-put event :ledger-gain gain)
+                (push gain (plist-get org-ladder-sm--session-stats :promoted))))))))))
 
 (defun org-ladder-sm-feedback (event)
-  "Format echo-area feedback for `org-sm' review EVENT."
+  "Format restrained feedback for EVENT, reporting ledger totals only on transitions."
   (let ((action (plist-get event :action))
         (card   (plist-get event :card))
         (old    (plist-get event :old-days))
-        (new    (plist-get event :new-days)))
+        (new    (plist-get event :new-days))
+        (gain   (plist-get event :ledger-gain)))
     (cond
      ((eq action 'dismiss)
       (if (org-ladder-sm--boss-card-p card)
-          (format "🏆 击败 Boss (%d次 · %d子卡)"
-                  (or (plist-get card :reviews) 0)
-                  (+ (or (plist-get card :child-topics) 0)
-                     (or (plist-get card :child-clozes) 0)))
-        "已筛选"))
+          (if-let* ((slain (plist-get event :ledger-slain)))
+              (format "🏆 Boss 讨伐 +1 (累计 %d · 剩 %d)"
+                      slain (or (plist-get event :ledger-left) 0))
+            "🏆 Boss 讨伐 +1")
+        (if-let* ((dis (plist-get event :ledger-dismissed)))
+            (format "已筛选 +1 (共 %d)" dis)
+          "已筛选")))
+     (gain
+      (if (and old (> old 0))
+          (format "%dd → %dd  %s" old new gain)
+        (format "→ %dd  %s" new gain)))
      ((org-ladder-sm--promoted-stage event)
       (let ((prom (org-ladder-sm--promoted-stage event)))
-        (format "✨ %dd → %dd  %s → %s"
-                (or old 0) new (car prom) (cdr prom))))
+        (format "%dd → %dd  %s +1" (or old 0) new (cdr prom))))
      ((eq action 'cloze)
       (if (and new (> new 0))
-          (format "%dd → %dd · %s"
-                  (or old 0) new (org-ladder-sm--stage-label new))
-        (format "→ %s · 🌱 幼苗"
-                (or (plist-get event :interval-label) "学习中"))))
+          (format "%dd → %dd" (or old 0) new)
+        (format "→ %s" (or (plist-get event :interval-label) "学习中"))))
+     ((eq action 'topic)
+      (if (and old (> old 0))
+          (format "%dd → %dd" old new)
+        (format "→ %dd" new)))
+     ((eq action 'postpone)
+      (format "推迟 %dd" (plist-get event :postpone-days)))
      ((fboundp 'org-sm-default-feedback)
       (org-sm-default-feedback event))
      (t (format "%s" action)))))
@@ -245,7 +304,7 @@ accumulated during an `org-sm' review session.")
 
 (defun org-ladder-sm-bonfire (&optional prev _aborted)
   "Present bonfire summary via `org-ladder-notify' (auto-hiding after 4s)."
-  (org-ladder-notify (and prev (format "上张 ✓ %s" prev))
+  (org-ladder-notify (and prev (format "✓ %s" prev))
                      :title (org-ladder-sm-bonfire-text)
                      :timeout 4))
 
