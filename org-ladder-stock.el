@@ -299,62 +299,49 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                         slain)))))
   (insert "\n"))
 
-(defun org-ladder-stock-insert-section (&optional cards)
-  "Insert the permanent Cloze stock and Monster pipeline block into current buffer."
+(defun org-ladder-stock-insert-section (&optional cards top-n)
+  "Insert the permanent Cloze stock and Monster pipeline block into current buffer.
+When TOP-N is positive, also list the TOP-N deepest Clozes and oldest Monsters."
   (let* ((cards (or cards (org-ladder-stock-cards)))
-         (sum (org-ladder-stock-summary cards)))
+         (sum (org-ladder-stock-summary cards))
+         (n   (or top-n 0)))
     (if (= (plist-get sum :total) 0)
         (insert "📚 知识森林\n  (no org-sm cards found)\n\n")
-      (org-ladder-stock--insert-overview sum))))
+      (org-ladder-stock--insert-overview sum)
+      (when (> n 0)
+        (insert (propertize (format "🛡️ 最远的 %d 棵树\n" n)
+                            'face '(:weight bold :height 1.15)))
+        (let ((sched (cl-remove-if-not
+                      (lambda (c)
+                        (and (eq (plist-get c :type) 'cloze)
+                             (not (plist-get c :dismissed))
+                             (plist-get c :interval-days)))
+                      cards)))
+          (dolist (c (seq-take (sort sched (lambda (a b)
+                                             (> (plist-get a :interval-days)
+                                                (plist-get b :interval-days))))
+                               n))
+            (insert (format "  %4dd  %s\n"
+                            (plist-get c :interval-days)
+                            (org-ladder-stock--title-button c)))))
+        (when-let* ((bosses (seq-take (plist-get sum :bosses) n)))
+          (insert (propertize (format "\n👹 盘踞最久的 %d 只魔物\n" (length bosses))
+                              'face '(:weight bold :height 1.15)))
+          (dolist (b bosses)
+            (let ((ct (or (plist-get b :child-topics) 0))
+                  (cc (or (plist-get b :child-clozes) 0)))
+              (insert (format "  照面 %2d 次  %-12s %s\n"
+                              (plist-get b :reviews)
+                              (if (> (+ ct cc) 0)
+                                  (format "[削血 %dT/%dC]" ct cc)
+                                "[0子卡]")
+                              (org-ladder-stock--title-button b))))))
+        (insert "\n")))))
+
+(declare-function org-ladder-show-details "org-ladder")
 
 ;;;###autoload
-(defun org-ladder-stock-show (&optional n)
-  "Display the permanent stock ledger.
-With prefix argument N, also list the N deepest Cloze cards and N top Bosses."
-  (interactive "P")
-  (let* ((cards (org-ladder-stock-cards))
-         (sum (org-ladder-stock-summary cards))
-         (n (if n (prefix-numeric-value n) 0))
-         (buf (get-buffer-create "*Org Ladder Stock*")))
-    (with-current-buffer buf
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (fundamental-mode)
-        (insert (propertize "点击任意阶段或魔物名称，直接打开对应的 org-sm-tree 发起培育/讨伐\n\n"
-                            'face '(:foreground "#75715E")))
-        (org-ladder-stock--insert-overview sum)
-        (when (> n 0)
-          (insert (propertize (format "\n🛡️ 最远的 %d 棵 Cloze\n" n)
-                              'face '(:weight bold :height 1.2)))
-          (let ((sched (cl-remove-if-not
-                        (lambda (c)
-                          (and (eq (plist-get c :type) 'cloze)
-                               (not (plist-get c :dismissed))
-                               (plist-get c :interval-days)))
-                        cards)))
-            (dolist (c (seq-take (sort sched (lambda (a b)
-                                               (> (plist-get a :interval-days)
-                                                  (plist-get b :interval-days))))
-                                 n))
-              (insert (format "  %4dd  %s\n"
-                              (plist-get c :interval-days)
-                              (org-ladder-stock--title-button c)))))
-          (when-let* ((bosses (seq-take (plist-get sum :bosses) n)))
-            (insert (propertize (format "\n⚔️ 盘踞最久的 %d 只守林 Boss\n"
-                                        (length bosses))
-                                'face '(:weight bold :height 1.2)))
-            (dolist (b bosses)
-              (let ((ct (or (plist-get b :child-topics) 0))
-                    (cc (or (plist-get b :child-clozes) 0)))
-                (insert (format "  照面 %2d 次  %-12s %s\n"
-                                (plist-get b :reviews)
-                                (if (> (+ ct cc) 0)
-                                    (format "[削血 %dT/%dC]" ct cc)
-                                  "[0 cloze]")
-                                (org-ladder-stock--title-button b)))))))
-        (goto-char (point-min))
-        (setq buffer-read-only t)))
-    (display-buffer buf)))
+(defalias 'org-ladder-stock-show #'org-ladder-show-details)
 
 (provide 'org-ladder-stock)
 ;;; org-ladder-stock.el ends here

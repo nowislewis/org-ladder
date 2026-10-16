@@ -300,11 +300,35 @@ Cached for 5 minutes; pass FORCE to bypass."
                      org-ladder-status-quotes)))
     (message "Org Ladder: %d min today — %s" today-score quote)))
 
+(declare-function org-sm-review-start-light "org-sm")
+(declare-function org-sm-review-start "org-sm")
+(declare-function org-sm-tree "org-sm")
+
+(defvar org-ladder-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map special-mode-map)
+    (define-key map "r" #'org-sm-review-start-light)
+    (define-key map "s" #'org-sm-review-start-light)
+    (define-key map "R" #'org-sm-review-start)
+    (define-key map "S" #'org-sm-review-start)
+    (define-key map "t" #'org-sm-tree)
+    (define-key map "l" #'org-sm-tree)
+    (define-key map "g" #'org-ladder-show-details)
+    map)
+  "Keymap for `org-ladder-mode' Campfire Hub.")
+
+(define-derived-mode org-ladder-mode special-mode "Org-Ladder"
+  "Campfire Hub mode for `*Org Ladder*'.
+\\[org-sm-review-start-light] starts a 6-card random expedition,
+\\[org-sm-review-start] reviews all due cards, \\[org-sm-tree] opens the
+card tree, and \\[forward-button] cycles through stage/monster buttons."
+  (setq-local revert-buffer-function
+              (lambda (_ignore-auto _noconfirm) (org-ladder-show-details))))
+
 ;;;###autoload
 (defun org-ladder-show-details (&optional months)
-  "Show a compact Org Ladder dashboard.
-This version is intentionally plain-text (not `org-mode') so custom faces
-for the GitHub-style heatmap are preserved reliably."
+  "Show the Org Ladder Campfire Hub dashboard.
+With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
   (interactive "P")
   (let* ((all-scores (org-ladder-calculate-scores))
          (score      (org-ladder-current-score))
@@ -312,6 +336,9 @@ for the GitHub-style heatmap are preserved reliably."
          (cur-ym     (org-ladder--month-key (current-time)))
          (cur-year   (car cur-ym))
          (cur-month  (cadr cur-ym))
+         (top-n      (cond ((null months) 0)
+                           ((listp months) 10)
+                           (t (prefix-numeric-value months))))
          (history    (cond ((null months)  (seq-take all-scores 12))
                            ((listp months) all-scores)
                            (t              (seq-take all-scores months))))
@@ -320,19 +347,30 @@ for the GitHub-style heatmap are preserved reliably."
       (with-current-buffer (get-buffer-create "*Org Ladder*")
         (let ((inhibit-read-only t))
           (erase-buffer)
-          (fundamental-mode)
+          (unless (derived-mode-p 'org-ladder-mode)
+            (org-ladder-mode))
 
           (let ((quote (nth (random (length org-ladder-status-quotes))
                             org-ladder-status-quotes)))
-            (insert (propertize (format "⚡ %s\n" quote)
-                                'face '(:weight bold :height 1.35 :foreground "#A6E22E")))
-            (insert (propertize "────────────────────────────────────────\n\n"
+            (insert (propertize (format "🔥 %s\n" quote)
+                                'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
+            (insert "  "
+                    (buttonize "[🎲 随机远征 6 张 (r)]"
+                               (lambda (_) (require 'org-sm) (org-sm-review-start-light)))
+                    "   "
+                    (buttonize "[⚔️ 全量出征 (R)]"
+                               (lambda (_) (require 'org-sm) (org-sm-review-start)))
+                    "   "
+                    (buttonize "[🗺️ 选怪树图 (t)]"
+                               (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
+                    "\n")
+            (insert (propertize "────────────────────────────────────────────────────────\n\n"
                                 'face '(:foreground "#444444"))))
 
           ;; ── Permanent stock (first screen, never resets) ───────────────
           (require 'org-ladder-stock nil t)
           (when (fboundp 'org-ladder-stock-insert-section)
-            (org-ladder-stock-insert-section))
+            (org-ladder-stock-insert-section nil top-n))
 
           ;; ── Artifact progress (unlocked by cumulative score) ───────────
           (require 'org-ladder-art nil t)

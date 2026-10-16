@@ -318,7 +318,11 @@ accumulated during an `org-sm' review session.")
          (if prev (format "  [last: %s]" prev) ""))))))
 
 (defun org-ladder-sm-bonfire (&optional prev _aborted)
-  "Present bonfire summary via `org-ladder-notify' (auto-hiding after 4s)."
+  "Present bonfire summary via `org-ladder-notify' and refresh Campfire Hub."
+  (when (and (get-buffer "*Org Ladder*")
+             (fboundp 'org-ladder-show-details))
+    (save-window-excursion
+      (org-ladder-show-details)))
   (org-ladder-notify (and prev (format "✓ %s" prev))
                      :title (org-ladder-sm-bonfire-text)
                      :timeout 4))
