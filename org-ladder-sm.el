@@ -50,9 +50,7 @@ live on each scan instead of captured as a stale snapshot."
 
 (defun org-ladder-sm--files ()
   "Resolve `org-ladder-sm-files' to a concrete list of files."
-  (if (functionp org-ladder-sm-files)
-      (funcall org-ladder-sm-files)
-    org-ladder-sm-files))
+  (org-ladder-stock--resolve-files org-ladder-sm-files))
 
 (defcustom org-ladder-sm-score-per-review 2
   "Score awarded per review event."

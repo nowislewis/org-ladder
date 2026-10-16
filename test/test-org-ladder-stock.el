@@ -152,5 +152,15 @@
               (set-marker cloze nil))))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
+(ert-deftest org-ladder-stock-resolve-files-contract ()
+  "Resolve function symbols, lambdas, and lists; reject unbound symbols."
+  (let ((org-sm-directory nil)
+        (org-ladder-stock-files #'org-sm-files))
+    (should (null (org-ladder-stock-cards))))
+  (let ((org-ladder-stock-files (lambda () '("a.org" "b.org"))))
+    (should (equal (org-ladder-stock--files) '("a.org" "b.org"))))
+  (let ((org-ladder-stock-files 'org-ladder-nonexistent-files-fn))
+    (should-error (org-ladder-stock--files) :type 'user-error)))
+
 (provide 'test-org-ladder-stock)
 ;;; test-org-ladder-stock.el ends here

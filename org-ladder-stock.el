@@ -85,13 +85,26 @@ Prefer a function (e.g. `org-sm-files') so the file set is resolved live."
 
 ;;; ── Scanning ─────────────────────────────────────────────────────────────────
 
+(defun org-ladder-stock--resolve-files (source)
+  "Resolve a file list or zero-argument function SOURCE."
+  (when (and (eq source 'org-sm-files) (not (fboundp source)))
+    (require 'org-sm-card))
+  (let ((files (cond ((null source) nil)
+                     ((and (listp source) (not (functionp source))) source)
+                     ((or (symbolp source) (functionp source))
+                      (unless (functionp source)
+                        (user-error "Undefined file-source function: %S" source))
+                      (funcall source))
+                     (t (user-error "Invalid file source: %S" source)))))
+    (unless (and (listp files) (cl-every #'stringp files))
+      (user-error "File source must return a list of paths: %S" source))
+    files))
+
 (defun org-ladder-stock--files ()
   "Resolve `org-ladder-stock-files' to a concrete list of files.
 Falls back to `org-ladder-sm--files' when unset so one file list serves both."
   (cond (org-ladder-stock-files
-         (if (functionp org-ladder-stock-files)
-             (funcall org-ladder-stock-files)
-           org-ladder-stock-files))
+         (org-ladder-stock--resolve-files org-ladder-stock-files))
         ((fboundp 'org-ladder-sm--files)
          (org-ladder-sm--files))))
 
