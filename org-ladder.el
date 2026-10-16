@@ -67,53 +67,11 @@ Legend tier has no upper bound.")
   "Emacs time of last cache computation.")
 
 ;;; ── Time key API ─────────────────────────────────────────────────────────────
-;;
-;; Three-element lists encode granularity via sentinel values:
-;;   Day   (year month day)   month > 0, day > 0
-;;   Month (year month 0)     month > 0, day = 0
-;;   Week  (year 0 week)      month = 0  (day field holds ISO week number)
-
-(defun org-ladder-time-key-day (year month day)
-  "Return a day-granularity time key (YEAR MONTH DAY)."
-  (list year month day))
-
-(defun org-ladder-time-key-month (year month)
-  "Return a month-granularity time key (YEAR MONTH 0)."
-  (list year month 0))
-
-(defun org-ladder-time-key-week (year week)
-  "Return an ISO-week time key (YEAR 0 WEEK)."
-  (list year 0 week))
-
-(defun org-ladder-time-key-granularity (key)
-  "Return `day', `month', or `week' for time KEY."
-  (cond ((= (nth 1 key) 0) 'week)
-        ((= (nth 2 key) 0) 'month)
-        (t                 'day)))
-
 (defun org-ladder-hash-to-alist (tbl)
   "Convert hash-table TBL to an alist of (KEY . VALUE)."
   (let (result)
     (maphash (lambda (k v) (push (cons k v) result)) tbl)
     result))
-
-(defun org-ladder-time-key-to-month (key)
-  "Return (YEAR MONTH) for KEY.  Week keys resolve to their ISO Monday's month."
-  (pcase (org-ladder-time-key-granularity key)
-    ((or 'day 'month)
-     (list (nth 0 key) (nth 1 key)))
-    ('week
-     (let* ((year  (nth 0 key))
-            (week  (nth 2 key))
-            (jan4  (encode-time 0 0 0 4 1 year))
-            (j-dow (decoded-time-weekday (decode-time jan4)))
-            (w1-mon (time-subtract
-                     jan4 (seconds-to-time
-                           (* (mod (1- (if (= j-dow 0) 7 j-dow)) 7) 86400))))
-            (monday (time-add w1-mon
-                              (seconds-to-time (* (1- week) 7 86400))))
-            (d (decode-time monday)))
-       (list (decoded-time-year d) (decoded-time-month d))))))
 
 (defun org-ladder-time-parse-iso (string)
   "Return a day key for the first YYYY-MM-DD found in STRING, or nil."
@@ -122,10 +80,6 @@ Legend tier has no upper bound.")
     (list (string-to-number (match-string 1 string))
           (string-to-number (match-string 2 string))
           (string-to-number (match-string 3 string)))))
-
-(defun org-ladder-time-encode (year month day)
-  "Encode YEAR MONTH DAY to an Emacs time value."
-  (encode-time 0 0 0 day month year))
 
 (defun org-ladder-time-from-emacs (time)
   "Convert Emacs TIME to a day key (YEAR MONTH DAY)."
@@ -159,10 +113,10 @@ Errors in individual sources are logged and skipped."
     result))
 
 (defun org-ladder--normalize-entries (raw-entries)
-  "Aggregate RAW-ENTRIES into a monthly alist ((year month) . score)."
+  "Aggregate day-key RAW-ENTRIES into a monthly alist ((year month) . score)."
   (let ((tbl (make-hash-table :test 'equal)))
     (dolist (entry raw-entries)
-      (let ((ym (org-ladder-time-key-to-month (car entry))))
+      (let ((ym (list (caar entry) (cadar entry))))
         (puthash ym (+ (gethash ym tbl 0) (cdr entry)) tbl)))
     (org-ladder-hash-to-alist tbl)))
 
@@ -178,8 +132,7 @@ Cached for 5 minutes; pass FORCE to bypass."
     (let ((raw   (org-ladder--collect-raw))
           (daily (make-hash-table :test 'equal)))
       (dolist (e raw)
-        (when (eq (org-ladder-time-key-granularity (car e)) 'day)
-          (puthash (car e) (+ (gethash (car e) daily 0) (cdr e)) daily)))
+        (puthash (car e) (+ (gethash (car e) daily 0) (cdr e)) daily))
       (setq org-ladder--daily-cache daily
             org-ladder--cache (org-ladder--sort-monthly
                                (org-ladder--normalize-entries raw))
@@ -196,13 +149,6 @@ Cached for 5 minutes; pass FORCE to bypass."
   (or (cdr (assoc (org-ladder--month-key (current-time))
                   (org-ladder-calculate-scores)))
       0))
-
-;;;###autoload
-(defun org-ladder-force-refresh ()
-  "Invalidate cache and recompute scores."
-  (interactive)
-  (setq org-ladder--cache nil org-ladder--daily-cache nil org-ladder--cache-time nil)
-  (message "Org Ladder: score %d" (org-ladder-current-score)))
 
 ;;; ── Tier calculation ─────────────────────────────────────────────────────────
 
@@ -300,7 +246,6 @@ Cached for 5 minutes; pass FORCE to bypass."
     (define-key map "s" #'org-sm-review-start-light)
     (define-key map "S" #'org-sm-review-start)
     (define-key map "l" #'org-sm-tree)
-    (define-key map "g" #'org-ladder-show-details)
     map)
   "Keymap for `org-ladder-mode' Campfire Hub.")
 
@@ -310,7 +255,11 @@ Cached for 5 minutes; pass FORCE to bypass."
 \\[org-sm-review-start] reviews all due cards, \\[org-sm-tree] opens the
 card tree, and \\[forward-button] cycles through stage/monster buttons."
   (setq-local revert-buffer-function
-              (lambda (_ignore-auto _noconfirm) (org-ladder-show-details))))
+              (lambda (_ignore-auto _noconfirm)
+                (setq org-ladder--cache nil
+                      org-ladder--daily-cache nil
+                      org-ladder--cache-time nil)
+                (org-ladder-show-details))))
 
 ;;;###autoload
 (defun org-ladder-show-details (&optional months)
