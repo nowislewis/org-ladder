@@ -338,10 +338,5 @@ When TOP-N is positive, also list the TOP-N deepest Clozes and oldest Monsters."
                               (org-ladder-stock--title-button b))))))
         (insert "\n")))))
 
-(declare-function org-ladder-show-details "org-ladder")
-
-;;;###autoload
-(defalias 'org-ladder-stock-show #'org-ladder-show-details)
-
 (provide 'org-ladder-stock)
 ;;; org-ladder-stock.el ends here

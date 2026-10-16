@@ -307,11 +307,8 @@ Cached for 5 minutes; pass FORCE to bypass."
 (defvar org-ladder-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map special-mode-map)
-    (define-key map "r" #'org-sm-review-start-light)
     (define-key map "s" #'org-sm-review-start-light)
-    (define-key map "R" #'org-sm-review-start)
     (define-key map "S" #'org-sm-review-start)
-    (define-key map "t" #'org-sm-tree)
     (define-key map "l" #'org-sm-tree)
     (define-key map "g" #'org-ladder-show-details)
     map)
@@ -355,13 +352,13 @@ With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
             (insert (propertize (format "🔥 %s\n" quote)
                                 'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
             (insert "  "
-                    (buttonize "[🎲 随机远征 6 张 (r)]"
+                    (buttonize "[🎲 随机远征 6 张 (s)]"
                                (lambda (_) (require 'org-sm) (org-sm-review-start-light)))
                     "   "
-                    (buttonize "[⚔️ 全量出征 (R)]"
+                    (buttonize "[⚔️ 全量出征 (S)]"
                                (lambda (_) (require 'org-sm) (org-sm-review-start)))
                     "   "
-                    (buttonize "[🗺️ 选怪树图 (t)]"
+                    (buttonize "[🗺️ 选怪树图 (l)]"
                                (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
                     "\n")
             (insert (propertize "────────────────────────────────────────────────────────\n\n"
