@@ -286,19 +286,9 @@ Cached for 5 minutes; pass FORCE to bypass."
     "Stay in the pocket."
     "Another rep, another level."
     "Tiny push. Big arc.")
-  "Short motivational lines randomly shown by `org-ladder-status'."
+  "Short motivational lines randomly shown in the Campfire Hub."
   :type '(repeat string)
   :group 'org-ladder)
-
-;;;###autoload
-(defun org-ladder-status ()
-  "Show today's Org Ladder minutes plus one short motivational line."
-  (interactive)
-  (let* ((daily-tbl (org-ladder--collect-daily))
-         (today-score (gethash (org-ladder-time-today) daily-tbl 0))
-         (quote (nth (random (length org-ladder-status-quotes))
-                     org-ladder-status-quotes)))
-    (message "Org Ladder: %d min today — %s" today-score quote)))
 
 (declare-function org-sm-review-start-light "org-sm")
 (declare-function org-sm-review-start "org-sm")
