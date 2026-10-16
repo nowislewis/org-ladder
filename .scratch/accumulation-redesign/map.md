@@ -27,11 +27,28 @@
 <!-- 已结票的索引 -->
 
 - [topic 卡复习时的处理动作](issues/01-topic-processing-action.md)：快速路径不变；复习菜单加一个主动触发键"挑一段"（org-sm 侧已实现：`org-sm-gptel-pick`），AI 只推荐一段并附理由，提交后不自动跳下一张。
-- [永久存量：阶段阈值、dismissed 口径、赛季降级](issues/02-permanent-stock-metrics.md)：阶段 7/30/90/180；dismissed 计为已筛选（正向处理量）；月度段位降为装饰、徽章永久陈列、遗迹改按累计存量解锁（已实现：`org-ladder-stock.el`、`org-ladder-art.el`、`org-ladder.el`）。
-- [装备清单实验：列出最远的 20 张卡，验证"距离感"](issues/03-farthest-cards-experiment.md)：前 20 全是 cloze（3–5 次复习跨 150–209 天），并暴露出上游 topic 阻塞；面板支持 `C-u M-x org-ladder-stock-show` 列最远卡片。
-- [积累在什么时刻被看见](issues/04-feedback-moments.md)：复习当下显示间隔跃迁与跨阶段提示；结束或按 `a` 停下均显示篝火小结且不报剩余到期数（已实现于 `org-sm.el`）。
+- [永久存量：阶段阈值、dismissed 口径、赛季降级](issues/02-permanent-stock-metrics.md)：五阶森林（7/30/90/180）只统计 Cloze；Topic 归入上游阅读池与守林 Boss 讨伐；月度段位降为装饰、徽章永久陈列、遗迹改按累计存量解锁（`org-ladder-stock.el`、`org-ladder-art.el`、`org-ladder.el`）。
+- [装备清单实验：列出最远的 20 张卡，验证"距离感"](issues/03-farthest-cards-experiment.md)：前 20 全是 cloze（3–5 次复习跨 150–209 天），并暴露出上游 topic 阻塞；面板支持 `C-u M-x org-ladder-stock-show` 列最远 Cloze 与盘踞最久 Boss。
+- [积累在什么时刻被看见](issues/04-feedback-moments.md)：复习当下显示间隔跃迁、Cloze 升阶与 Boss 抬头/击杀反馈；结束或按 `a` 停下均显示篝火小结且不报剩余到期数（通过 `org-sm` 通用 Hook 在 `org-ladder-sm.el` 实现）。
+- [Boss 层定义：成熟卡升级条件与主动挑战入口](issues/90-boss-tier-definition.md)：照面 ≥5 次仍未 dismiss 的 Topic 为守林 Boss，拆出子卡为削血（`xT/yC`），`dismiss` 为击杀；`org-sm.el` 保持纯复习核心，游戏化逻辑全部收敛至 `org-ladder`。
 
-- [topic 卡复习时的处理动作](issues/01-topic-processing-action.md)：快速路径不变；复习菜单加一个主动触发键"挑一段"，复用 card-workbench + 新 AI 模式（只推荐一段并附理由），提交后自动推后并跳下一张。
+## Implementation verification (2026-10-16)
+
+- `org-sm-card.el` is the shared read-only metadata module; stock classification
+  and review gamification remain in `org-ladder`. Public operation/event
+  contracts are documented in `../org-sm/README.org`.
+- Review-session membership matches the exact current card marker. Card-change
+  notifications invalidate score caches; postpone and out-of-session actions
+  do not enter bonfire review counts.
+- 29 ERT tests include disposable-buffer Boss dismissal, cloze reveal/grade,
+  restore/restart/abort, cleanup, parser equivalence and unsaved buffer reads.
+  Batch integration stubs only `recenter` and the menu input; actual desktop
+  redisplay/window appearance still needs a manual smoke check.
+- Shared Org reader retained: approximately 179 ms per warmed scan of 25 files,
+  572 cards. Property snapshots were slower; a restricted parser experiment
+  gained roughly 16% but lacked format compatibility and was not adopted.
+- No user-vault migration performed. Recovery snapshots remain under
+  `/tmp/org-sm-recovery-uohcyT`. Future speed work requires measured UX need.
 
 ## Not yet specified
 
@@ -41,6 +58,6 @@
 
 ## Out of scope
 
-- **Boss 层与 `again` 重定性**：属于"复习无聊"的独立问题，不是"积累感"。票已建但关闭：[[90-boss-tier-definition]]、[[91-again-as-informative-death]]。需要推动时另开一个 effort。
+- **`again` 重定性**：cloze 全库仅 9 次 again，暂不需要单独建模：[[91-again-as-informative-death]]。
 - **视觉皮肤、RPG 角色行走、Canvas 游戏**：皮肤不改变奖励函数，属于 spec 之后的独立工作。
 - **真实的多人对照（排行榜、其他玩家数据）**：本图只做"与过去的自己比"。

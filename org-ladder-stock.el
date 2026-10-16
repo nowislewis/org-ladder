@@ -2,14 +2,14 @@
 
 ;; Author: Org Ladder System
 ;; Version: 3.1
-;; Package-Requires: ((emacs "27.1") (org "9.0") (org-ladder "3.0"))
+;; Package-Requires: ((emacs "29.1") (org "9.6") (org-ladder "3.0") (org-sm "0"))
 
 ;;; Commentary:
 ;; The permanent layer of org-ladder: how long each org-sm card has survived.
 ;;
-;; Every card has exactly ONE number: its current interval in days, computed as
-;; SCHEDULED - SRS_LAST.  Topic and cloze cards use the same arithmetic, so one
-;; metric covers both.  Stage thresholds: 7 / 30 / 90 / 180 days.
+;; Cloze intervals (SCHEDULED - SRS_LAST) form the permanent Forest histogram.
+;; Topic repetitions and descendant cards form a separate Guardian Boss pipeline.
+;; Stage thresholds: 7 / 30 / 90 / 180 days.
 ;;
 ;; This layer is decoupled from the seasonal score on purpose.  It never reads
 ;; `org-ladder-retention-rate', never consults `org-ladder--cache', and has no
@@ -17,13 +17,14 @@
 ;; never the stock computed here.  Dismissed cards are reported separately as
 ;; "filtered" (screened) items -- a positive processing count, not a gap.
 ;;
-;; Scanning is pure regexp over the org files (no `org-mode' initialization),
-;; following the same approach as `org-ladder-sm--scan-file'.
+;; Card storage is read through the lightweight `org-sm-card' interface.
+;; This file owns classification and presentation, not Org property parsing.
 
 ;;; Code:
 
 (require 'cl-lib)
-(declare-function org-ladder-time-parse-iso "org-ladder")
+(require 'seq)
+(require 'org-sm-card)
 
 (defgroup org-ladder-stock nil
   "Permanent knowledge stock for org-ladder."
@@ -35,6 +36,11 @@
 Either a list of files, or a function of no arguments returning such a list.
 Prefer a function (e.g. `org-sm-files') so the file set is resolved live."
   :type '(choice (repeat file) function)
+  :group 'org-ladder-stock)
+
+(defcustom org-ladder-stock-boss-threshold 5
+  "Minimum review count for a topic card to become a Boss."
+  :type 'integer
   :group 'org-ladder-stock)
 
 ;;; ── Stage thresholds ─────────────────────────────────────────────────────────
@@ -56,10 +62,26 @@ Prefer a function (e.g. `org-sm-files') so the file set is resolved live."
         (when (and (>= days min) (or (null max) (< days max)))
           (throw 'found (car s)))))))
 
+(defun org-ladder-stock-stage-index (days)
+  "Return 0..4 stage index for DAYS, or nil when DAYS is nil."
+  (when days
+    (cl-position (org-ladder-stock-stage days)
+                 org-ladder-stock-stages
+                 :key #'car)))
+
 (defun org-ladder-stock-stage-display (name)
   "Return the display string for stage NAME."
   (or (nth 2 (cdr (assoc name org-ladder-stock-stages)))
       (symbol-name name)))
+
+(defun org-ladder-stock-boss-state (type reviews dismissed &optional child-topics child-clozes)
+  "Return Boss state (`active', `wounded', `slain', or nil) for a card."
+  (when (and (member type '("topic" topic))
+             (>= (or reviews 0) org-ladder-stock-boss-threshold))
+    (cond
+     (dismissed 'slain)
+     ((> (+ (or child-topics 0) (or child-clozes 0)) 0) 'wounded)
+     (t 'active))))
 
 ;;; ── Scanning ─────────────────────────────────────────────────────────────────
 
@@ -73,61 +95,20 @@ Falls back to `org-ladder-sm--files' when unset so one file list serves both."
         ((fboundp 'org-ladder-sm--files)
          (org-ladder-sm--files))))
 
-(defun org-ladder-stock--card-interval (sched last)
-  "Return interval days between SCHEDULED and SRS_LAST date strings, or nil."
-  (when (and sched last)
-    (let* ((a (org-ladder-time-parse-iso sched))
-           (b (org-ladder-time-parse-iso last)))
-      (when (and a b)
-        (let ((ta (apply #'encode-time 0 0 0 (reverse a)))
-              (tb (apply #'encode-time 0 0 0 (reverse b))))
-          (floor (/ (float-time (time-subtract ta tb)) 86400.0)))))))
-
 (defun org-ladder-stock--scan-file (file)
-  "Scan FILE and return one plist per card.
-Each plist: (:title T :type TYPE :days N :reviews N :stage STAGE
-:dismissed BOOL).  Reading stops at the next heading, so a parent
-topic never absorbs its children's reviews."
-  (let (cards)
-    (with-temp-buffer
-      (insert-file-contents file)
-      (goto-char (point-min))
-      (while (re-search-forward "^\\*+ " nil t)
-        (let* ((head-beg (line-beginning-position))
-               (head-end (line-end-position))
-               (head (buffer-substring-no-properties head-beg head-end))
-               (next (save-excursion
-                       (goto-char head-end)
-                       (if (re-search-forward "^\\*+ " nil t)
-                           (line-beginning-position)
-                         (point-max))))
-               (chunk (buffer-substring-no-properties head-beg next)))
-          (when (string-match ":SRS_TYPE:[ \t]*\\(\\w+\\)" chunk)
-            (let* ((type (match-string 1 chunk))
-                   (dismissed (and (string-match-p ":dismissed:" head) t))
-                   (sched (and (string-match "SCHEDULED:[ \t]*<\\([0-9-]+\\)" chunk)
-                               (match-string 1 chunk)))
-                   (last (and (string-match ":SRS_LAST:[ \t]*\\([0-9-]+\\)" chunk)
-                              (match-string 1 chunk)))
-                   (days (org-ladder-stock--card-interval sched last))
-                   (reviews (let ((n 0) (pos 0))
-                              (while (string-match "^[ \t]*- \\(?:topic\\|cloze\\)\\b" chunk pos)
-                                (setq n (1+ n) pos (match-end 0)))
-                              n)))
-              (push (list :title (org-ladder-stock--clean-title head)
-                          :type type
-                          :days days
-                          :reviews reviews
-                          :stage (and days (org-ladder-stock-stage days))
-                          :dismissed dismissed)
-                    cards))))))
-    cards))
-
-(defun org-ladder-stock--clean-title (head)
-  "Return HEAD stripped of its stars, SRS prefixes and trailing tags."
-  (let ((s (replace-regexp-in-string "^\\*+[ \t]*" "" head)))
-    (setq s (replace-regexp-in-string "^\\[T\\][ \t]*\\|^\\[C\\][ \t]*" "" s))
-    (replace-regexp-in-string "[ \t]+:[A-Za-z0-9_:@]+:[ \t]*$" "" s)))
+  "Enrich canonical cards from FILE with Forest and Boss classifications."
+  (mapcar
+   (lambda (card)
+     (let ((type (plist-get card :type))
+           (days (plist-get card :interval-days)))
+       (append card
+               (list :stage (and (eq type 'cloze) days (org-ladder-stock-stage days))
+                     :boss-state (org-ladder-stock-boss-state
+                                  type (plist-get card :reviews)
+                                  (plist-get card :dismissed)
+                                  (plist-get card :child-topics)
+                                  (plist-get card :child-clozes))))))
+   (org-sm-cards-in-file file)))
 
 ;;;###autoload
 (defun org-ladder-stock-cards ()
@@ -145,17 +126,47 @@ result is cheap and must never lag behind a review."
 
 ;;;###autoload
 (defun org-ladder-stock-summary (&optional cards)
-  "Return a summary plist of the permanent stock.
+  "Return a summary plist of the permanent Cloze forest and Topic Boss pipeline.
 CARDS defaults to `org-ladder-stock-cards'.  Keys:
-  :stages      alist of (STAGE-NAME . COUNT), scheduled cards only
-  :scheduled   number of live (non-dismissed) cards with a computed interval
-  :unscheduled live cards with no interval yet
-  :dismissed   count of screened-out cards (a positive processing count)
-  :total       every card seen
-  :deepest     the card with the largest interval, or nil"
+  :stages        alist of (STAGE-NAME . COUNT), scheduled Cloze cards only
+  :scheduled     number of live scheduled Cloze cards
+  :unscheduled   live Cloze cards with no interval yet
+  :dismissed     count of screened non-Boss cards (positive processing count)
+  :boss-slain    count of dismissed Boss topics (reviews >= threshold)
+  :boss-active   count of live Boss topics (including wounded)
+  :boss-wounded  count of live Boss topics that already have child cards
+  :topic-pool    count of live non-Boss topics in the reading pool
+  :bosses        live Boss card plists sorted by review count descending
+  :total         every card seen
+  :deepest       the live Cloze card with the largest interval, or nil"
   (let* ((cards (or cards (org-ladder-stock-cards)))
-         (live (cl-remove-if (lambda (c) (plist-get c :dismissed)) cards))
-         (sched (cl-remove-if-not (lambda (c) (plist-get c :days)) live))
+         (clozes (cl-remove-if-not
+                  (lambda (c)
+                    (and (eq (plist-get c :type) 'cloze)
+                         (not (plist-get c :dismissed))))
+                  cards))
+         (sched (cl-remove-if-not (lambda (c) (plist-get c :interval-days)) clozes))
+         (live-bosses (cl-remove-if-not
+                       (lambda (c)
+                         (memq (plist-get c :boss-state) '(active wounded)))
+                       cards))
+         (wounded-bosses (cl-remove-if-not
+                          (lambda (c) (eq (plist-get c :boss-state) 'wounded))
+                          live-bosses))
+         (slain-bosses (cl-remove-if-not
+                        (lambda (c) (eq (plist-get c :boss-state) 'slain))
+                        cards))
+         (topic-pool (cl-remove-if-not
+                      (lambda (c)
+                        (and (eq (plist-get c :type) 'topic)
+                             (not (plist-get c :dismissed))
+                             (null (plist-get c :boss-state))))
+                      cards))
+         (screened (cl-remove-if-not
+                    (lambda (c)
+                      (and (plist-get c :dismissed)
+                           (not (eq (plist-get c :boss-state) 'slain))))
+                    cards))
          (counts (make-hash-table :test 'eq)))
     (dolist (c sched)
       (let ((st (plist-get c :stage)))
@@ -164,18 +175,26 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                             (cons (car s) (gethash (car s) counts 0)))
                           org-ladder-stock-stages)
           :scheduled (length sched)
-          :unscheduled (- (length live) (length sched))
-          :dismissed (length (cl-remove-if-not (lambda (c) (plist-get c :dismissed)) cards))
+          :unscheduled (- (length clozes) (length sched))
+          :dismissed (length screened)
+          :boss-slain (length slain-bosses)
+          :boss-active (length live-bosses)
+          :boss-wounded (length wounded-bosses)
+          :topic-pool (length topic-pool)
+          :bosses (sort (copy-sequence live-bosses)
+                        (lambda (a b)
+                          (> (or (plist-get a :reviews) 0)
+                             (or (plist-get b :reviews) 0))))
           :total (length cards)
           :deepest (car (sort (copy-sequence sched)
-                              (lambda (a b) (> (or (plist-get a :days) 0)
-                                               (or (plist-get b :days) 0))))))))
+                              (lambda (a b) (> (or (plist-get a :interval-days) 0)
+                                               (or (plist-get b :interval-days) 0))))))))
 
 (defun org-ladder-stock-insert-section (&optional cards)
-  "Insert the permanent stock summary block into the current buffer."
+  "Insert the permanent Cloze stock and Boss pipeline block into current buffer."
   (let* ((cards (or cards (org-ladder-stock-cards)))
          (sum (org-ladder-stock-summary cards)))
-    (insert (propertize "📚 知识存量 (Permanent Stock · 永不重置)\n"
+    (insert (propertize "📚 知识存量 (Cloze 森林 · 永不重置)\n"
                         'face '(:weight bold :height 1.2)))
     (if (= (plist-get sum :total) 0)
         (insert "  (no org-sm cards found)\n\n")
@@ -188,20 +207,24 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                             (or (org-ladder-stock-stage-display name) "")
                             count
                             (propertize bar 'face '(:foreground "#66D9EF")))))))
-      (insert (format "\n  已排期 %d · 未排期 %d · 已筛选 %d\n"
+      (insert (format "\n  Cloze 已排期 %d · 未排期 %d · 已筛选 %d\n"
                       (plist-get sum :scheduled)
                       (plist-get sum :unscheduled)
                       (plist-get sum :dismissed)))
+      (insert (format "  ⚔️ 守林 Boss  已击败 %d · 攻略中 %d（已削血 %d） · 阅读池 %d\n"
+                      (plist-get sum :boss-slain)
+                      (plist-get sum :boss-active)
+                      (plist-get sum :boss-wounded)
+                      (plist-get sum :topic-pool)))
       (when-let* ((deep (plist-get sum :deepest)))
         (insert (format "  最远   %dd  %s\n"
-                        (plist-get deep :days) (plist-get deep :title))))
+                        (plist-get deep :interval-days) (plist-get deep :title))))
       (insert "\n"))))
 
 ;;;###autoload
 (defun org-ladder-stock-show (&optional n)
   "Display the permanent stock ledger.
-With prefix argument N, also list the N deepest cards (default 20 when called
-with any prefix)."
+With prefix argument N, also list the N deepest Cloze cards and N top Bosses."
   (interactive "P")
   (let* ((cards (org-ladder-stock-cards))
          (sum (org-ladder-stock-summary cards))
@@ -211,9 +234,9 @@ with any prefix)."
       (let ((inhibit-read-only t))
         (erase-buffer)
         (fundamental-mode)
-        (insert (propertize "📚 知识存量 (Permanent Stock)\n"
+        (insert (propertize "📚 知识存量 (Cloze 森林)\n"
                             'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
-        (insert (propertize "间隔 = SCHEDULED - SRS_LAST，只增不减，永不重置\n"
+        (insert (propertize "间隔 = SCHEDULED - SRS_LAST，仅统计 Cloze，永不重置\n"
                             'face '(:foreground "#75715E")))
         (insert (propertize "────────────────────────────────────────\n\n"
                             'face '(:foreground "#444444")))
@@ -225,25 +248,47 @@ with any prefix)."
                             count
                             (propertize bar 'face '(:foreground "#66D9EF"))))))
         (insert "\n")
-        (insert (format "  已排期卡片    %d\n" (plist-get sum :scheduled)))
-        (insert (format "  未排期        %d\n" (plist-get sum :unscheduled)))
-        (insert (format "  已筛选        %d  （你的判断，不是缺口）\n"
+        (insert (format "  Cloze 已排期  %d\n" (plist-get sum :scheduled)))
+        (insert (format "  Cloze 未排期  %d\n" (plist-get sum :unscheduled)))
+        (insert (format "  已筛选        %d  （常规筛选，不是缺口）\n"
                         (plist-get sum :dismissed)))
+        (insert (format "  ⚔️ 守林 Boss  已击败 %d · 攻略中 %d（已削血 %d） · 阅读池 %d\n"
+                        (plist-get sum :boss-slain)
+                        (plist-get sum :boss-active)
+                        (plist-get sum :boss-wounded)
+                        (plist-get sum :topic-pool)))
         (when-let* ((deep (plist-get sum :deepest)))
-          (insert (format "\n  最深的一张    %dd  %s\n"
-                          (plist-get deep :days) (plist-get deep :title))))
+          (insert (format "\n  最深的一棵    %dd  %s\n"
+                          (plist-get deep :interval-days) (plist-get deep :title))))
         (when (> n 0)
-          (insert (propertize (format "\n🛡️ 最远的 %d 张\n" n)
+          (insert (propertize (format "\n🛡️ 最远的 %d 棵 Cloze\n" n)
                               'face '(:weight bold :height 1.2)))
-          (let ((sched (cl-remove-if-not (lambda (c) (plist-get c :days)) cards)))
+          (let ((sched (cl-remove-if-not
+                        (lambda (c)
+                          (and (eq (plist-get c :type) 'cloze)
+                               (not (plist-get c :dismissed))
+                               (plist-get c :interval-days)))
+                        cards)))
             (dolist (c (seq-take (sort sched (lambda (a b)
-                                               (> (plist-get a :days)
-                                                  (plist-get b :days))))
+                                               (> (plist-get a :interval-days)
+                                                  (plist-get b :interval-days))))
                                  n))
-              (insert (format "  %4dd  %-6s %s\n"
-                              (plist-get c :days)
-                              (plist-get c :type)
-                              (plist-get c :title))))))
+              (insert (format "  %4dd  %s\n"
+                              (plist-get c :interval-days)
+                              (plist-get c :title)))))
+          (when-let* ((bosses (seq-take (plist-get sum :bosses) n)))
+            (insert (propertize (format "\n⚔️ 盘踞最久的 %d 只守林 Boss\n"
+                                        (length bosses))
+                                'face '(:weight bold :height 1.2)))
+            (dolist (b bosses)
+              (let ((ct (or (plist-get b :child-topics) 0))
+                    (cc (or (plist-get b :child-clozes) 0)))
+                (insert (format "  照面 %2d 次  %-12s %s\n"
+                                (plist-get b :reviews)
+                                (if (> (+ ct cc) 0)
+                                    (format "[削血 %dT/%dC]" ct cc)
+                                  "[0 cloze]")
+                                (plist-get b :title)))))))
         (goto-char (point-min))
         (setq buffer-read-only t)))
     (display-buffer buf)))

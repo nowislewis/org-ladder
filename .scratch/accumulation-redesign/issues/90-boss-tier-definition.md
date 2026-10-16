@@ -1,7 +1,7 @@
 # Boss 层定义：成熟卡升级条件与主动挑战入口
 
 Type: grilling
-Status: out-of-scope
+Status: resolved
 
 ## Question
 
@@ -25,4 +25,12 @@ Boss 层的设计要解答：
 
 ## Answer
 
-<!-- 结票时填写 -->
+2026-10-16 用户重新定义并确认（**「森林与守林 Boss」统一模型**）：
+
+1. **Boss 的本质**：不再按 `again` 定义（cloze 全库仅 9 次 again），而是**复习（照面）了很多次仍未完全拆解转化为 cloze 并退役的 topic 卡**。
+2. **成为 Boss 的条件**：未 `dismiss` 的 topic 卡，自身 `LOGBOOK` 中复习次数 `>= 5`（`org-ladder-stock-boss-threshold`，当前共 48 张）。
+   - 若子树下已有派生的子 topic / 子 cloze，只要原 topic 本身尚未 `dismiss`，仍算**攻略中的 Boss（已削血：`xT/yC`）**。
+3. **击败 Boss（Victory）**：将已达 Boss 阈值的 topic 卡执行 `dismiss`（当前历史已击败 67 张）；复习时触发击杀反馈 `🏆 击败 Boss！(共照面 N 次 · 产出 M 张子卡)`。照面 `< 5` 次即 `dismiss` 的卡仍计为常规"已筛选"。
+4. **遇到 Boss 时的动作**：在日常复习流中刷到该 topic 时，提示栏与 `Topic:` 菜单直接显示 `⚔️ Boss (已照面 11 次 · 0 cloze)` 或 `⚔️ Boss [已削血: 2T/1C] (已照面 8 次)`。
+5. **与五阶森林存量的关系**：五阶成长柱状图（🌱 幼苗 ~ ⛰️ 远古）**100% 只统计 Cloze**（真正种下并随时间生长的记忆）；Topic 全部归入上游「阅读池与守林 Boss 讨伐」通道。
+6. **架构边界**：`org-sm.el` 只保留纯复习核心并提供只读 `org-sm-card-info` 与 4 个通用 Hook；阶段升阶、篝火小结、Boss 抬头与击杀反馈全部在 `org-ladder`（`org-ladder-stock.el` + `org-ladder-sm.el`）实现。
