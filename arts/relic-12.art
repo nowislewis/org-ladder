@@ -1,5 +1,5 @@
-(:title "RX-93 ν高达 · 精神感应浮游炮矩阵"
- :lore "牛高达不是装饰品！浮游炮矩阵环绕展开，象征你随时可调用的长期知识体系。"
+(:title "\u0052\u0058\u002d\u0039\u0033\u0020\u03bd\u9ad8\u8fbe\u0020\u00b7\u0020\u7cbe\u795e\u611f\u5e94\u6d6e\u6e38\u70ae\u77e9\u9635"
+ :lore "\u725b\u9ad8\u8fbe\u4e0d\u662f\u88c5\u9970\u54c1\uff01\u6d6e\u6e38\u70ae\u77e9\u9635\u73af\u7ed5\u5c55\u5f00\uff0c\u8c61\u5f81\u4f60\u968f\u65f6\u53ef\u8c03\u7528\u7684\u957f\u671f\u77e5\u8bc6\u4f53\u7cfb\u3002"
  :shapes
  ((rect 18 28 18 190 :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 2)
            (rect 42 38 18 180 :fill "#E2E8F0" :stroke "#0F172A" :stroke-width 2)

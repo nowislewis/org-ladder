@@ -1,5 +1,5 @@
-(:title "炉石传说 · 旅店金橙传说纹章"
- :lore "忙了一天，来炉边坐坐吧！唯有经受住时间考验的常青卡片，才配得上金色传说边框。"
+(:title "\u7089\u77f3\u4f20\u8bf4\u0020\u00b7\u0020\u65c5\u5e97\u91d1\u6a59\u4f20\u8bf4\u7eb9\u7ae0"
+ :lore "\u5fd9\u4e86\u4e00\u5929\uff0c\u6765\u7089\u8fb9\u5750\u5750\u5427\uff01\u552f\u6709\u7ecf\u53d7\u4f4f\u65f6\u95f4\u8003\u9a8c\u7684\u5e38\u9752\u5361\u7247\uff0c\u624d\u914d\u5f97\u4e0a\u91d1\u8272\u4f20\u8bf4\u8fb9\u6846\u3002"
  :shapes
  ((circle 130 124 88 :fill "#B45309" :stroke "#FDE047" :stroke-width 4)
            (circle 130 124 70 :fill "#1E293B" :stroke "#FACC15" :stroke-width 3)

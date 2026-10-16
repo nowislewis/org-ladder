@@ -1,5 +1,5 @@
-(:title "灭尽龙 · 歼世巨角纹章 (MHW)"
- :lore "古龙捕食者展开漆黑双角与再生棘刺。不逃避硬骨头，正面击碎盘踞已久的守林魔王。"
+(:title "\u706d\u5c3d\u9f99\u0020\u00b7\u0020\u6b7c\u4e16\u5de8\u89d2\u7eb9\u7ae0\u0020\u0028\u004d\u0048\u0057\u0029"
+ :lore "\u53e4\u9f99\u6355\u98df\u8005\u5c55\u5f00\u6f06\u9ed1\u53cc\u89d2\u4e0e\u518d\u751f\u68d8\u523a\u3002\u4e0d\u9003\u907f\u786c\u9aa8\u5934\uff0c\u6b63\u9762\u51fb\u788e\u76d8\u8e1e\u5df2\u4e45\u7684\u5b88\u6797\u9b54\u738b\u3002"
  :shapes
  ((poly ((70 . 92) (20 . 20) (14 . 58) (38 . 118) (78 . 136)) :fill "#D97706" :stroke "#0F172A" :stroke-width 2.5)
            (poly ((190 . 92) (240 . 20) (246 . 58) (222 . 118) (182 . 136)) :fill "#B45309" :stroke "#0F172A" :stroke-width 2.5)

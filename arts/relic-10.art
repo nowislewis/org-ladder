@@ -1,5 +1,5 @@
-(:title "玛莲妮亚 · 纯净金翼盔"
- :lore "不曾知晓败绩的锋刃。每一次主动回忆与精炼，都是对思维水鸟乱舞的打磨。"
+(:title "\u739b\u83b2\u59ae\u4e9a\u0020\u00b7\u0020\u7eaf\u51c0\u91d1\u7ffc\u76d4"
+ :lore "\u4e0d\u66fe\u77e5\u6653\u8d25\u7ee9\u7684\u950b\u5203\u3002\u6bcf\u4e00\u6b21\u4e3b\u52a8\u56de\u5fc6\u4e0e\u7cbe\u70bc\uff0c\u90fd\u662f\u5bf9\u601d\u7ef4\u6c34\u9e1f\u4e71\u821e\u7684\u6253\u78e8\u3002"
  :shapes
  ((poly ((78 . 118) (18 . 28) (14 . 78) (36 . 136) (78 . 152)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
            (poly ((182 . 118) (242 . 28) (246 . 78) (224 . 136) (182 . 152)) :fill "#EAB308" :stroke "#0F172A" :stroke-width 2)

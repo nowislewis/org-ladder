@@ -1,5 +1,5 @@
-(:title "天空之王者 · 雄火龙纹章 (MHW)"
- :lore "展翼盘旋于森丘之巅的火龙图腾。猎人的勋章不靠运气，靠每一场讨伐的积累。"
+(:title "\u5929\u7a7a\u4e4b\u738b\u8005\u0020\u00b7\u0020\u96c4\u706b\u9f99\u7eb9\u7ae0\u0020\u0028\u004d\u0048\u0057\u0029"
+ :lore "\u5c55\u7ffc\u76d8\u65cb\u4e8e\u68ee\u4e18\u4e4b\u5dc5\u7684\u706b\u9f99\u56fe\u817e\u3002\u730e\u4eba\u7684\u52cb\u7ae0\u4e0d\u9760\u8fd0\u6c14\uff0c\u9760\u6bcf\u4e00\u573a\u8ba8\u4f10\u7684\u79ef\u7d2f\u3002"
  :shapes
  ((poly ((114 . 98) (18 . 34) (26 . 118) (64 . 156) (110 . 142)) :fill "#E11D48" :stroke "#FACC15" :stroke-width 2.5)
            (poly ((146 . 98) (242 . 34) (234 . 118) (196 . 156) (150 . 142)) :fill "#BE123C" :stroke "#FACC15" :stroke-width 2.5)

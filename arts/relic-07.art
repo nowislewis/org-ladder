@@ -1,5 +1,5 @@
-(:title "MSN-04 沙扎比 · 新吉翁总帅座机"
- :lore "深红重甲与浮游感应炮主宰战场。深厚的存量让你在面对任何复杂系统时游刃有余。"
+(:title "\u004d\u0053\u004e\u002d\u0030\u0034\u0020\u6c99\u624e\u6bd4\u0020\u00b7\u0020\u65b0\u5409\u7fc1\u603b\u5e05\u5ea7\u673a"
+ :lore "\u6df1\u7ea2\u91cd\u7532\u4e0e\u6d6e\u6e38\u611f\u5e94\u70ae\u4e3b\u5bb0\u6218\u573a\u3002\u6df1\u539a\u7684\u5b58\u91cf\u8ba9\u4f60\u5728\u9762\u5bf9\u4efb\u4f55\u590d\u6742\u7cfb\u7edf\u65f6\u6e38\u5203\u6709\u4f59\u3002"
  :shapes
  ((poly ((18 . 235) (48 . 172) (212 . 172) (242 . 235)) :fill "#BE123C" :stroke "#0F172A" :stroke-width 2.5)
            (poly ((130 . 18) (156 . 48) (148 . 98) (112 . 98) (104 . 48)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2.5)

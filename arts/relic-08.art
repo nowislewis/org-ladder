@@ -1,5 +1,5 @@
-(:title "暗月大剑 · 群星与月之誓约"
- :lore "流淌着寒冽月光的传奇大剑。历经百日淬炼的知识，终将化作劈开迷雾的利刃。"
+(:title "\u6697\u6708\u5927\u5251\u0020\u00b7\u0020\u7fa4\u661f\u4e0e\u6708\u4e4b\u8a93\u7ea6"
+ :lore "\u6d41\u6dcc\u7740\u5bd2\u51bd\u6708\u5149\u7684\u4f20\u5947\u5927\u5251\u3002\u5386\u7ecf\u767e\u65e5\u6dec\u70bc\u7684\u77e5\u8bc6\uff0c\u7ec8\u5c06\u5316\u4f5c\u5288\u5f00\u8ff7\u96fe\u7684\u5229\u5203\u3002"
  :shapes
  ((circle 130 96 68 :fill "#0EA5E9" :opacity "0.18")
            (poly ((130 . 14) (152 . 52) (148 . 162) (112 . 162) (108 . 52)) :fill "#38BDF8" :stroke "#E0F2FE" :stroke-width 2)

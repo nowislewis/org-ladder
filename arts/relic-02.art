@@ -1,5 +1,5 @@
-(:title "MS-06S 夏亚专用扎古 II · 赤色彗星"
- :lore "三倍速的赤红独眼在暗处点亮。没有天生的王牌，只有每一次精准的推进。"
+(:title "\u004d\u0053\u002d\u0030\u0036\u0053\u0020\u590f\u4e9a\u4e13\u7528\u624e\u53e4\u0020\u0049\u0049\u0020\u00b7\u0020\u8d64\u8272\u5f57\u661f"
+ :lore "\u4e09\u500d\u901f\u7684\u8d64\u7ea2\u72ec\u773c\u5728\u6697\u5904\u70b9\u4eae\u3002\u6ca1\u6709\u5929\u751f\u7684\u738b\u724c\uff0c\u53ea\u6709\u6bcf\u4e00\u6b21\u7cbe\u51c6\u7684\u63a8\u8fdb\u3002"
  :shapes
  ((poly ((25 . 235) (60 . 180) (200 . 180) (235 . 235)) :fill "#9F1239" :stroke "#0F172A" :stroke-width 2)
            (poly ((95 . 180) (165 . 180) (155 . 235) (105 . 235)) :fill "#334155" :stroke "#0F172A" :stroke-width 2)
