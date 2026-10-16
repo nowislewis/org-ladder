@@ -146,9 +146,7 @@ it occurred, even if the task is not yet completed."
             (org-ladder-clock--scan-file file tbl)
           (error (message "org-ladder-clock: error in %s: %s"
                           file (error-message-string err))))))
-    (let (result)
-      (maphash (lambda (k v) (push (cons k v) result)) tbl)
-      result)))
+    (org-ladder-hash-to-alist tbl)))
 
 ;;; ── Registration ─────────────────────────────────────────────────────────────
 

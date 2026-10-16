@@ -138,17 +138,17 @@
                 (org-sm--review-markers (list boss cloze))
                 (should (org-sm--current-review-card-p))
                 (should-not (local-variable-p 'header-line-format))
-                (should (equal org-ladder-sm--last-hud
-                               "SM 1/2 · ⚔️ Boss · 5次 · 削血 0T/1C"))
+                (should (equal org-ladder-notify-last-text
+                               "当前 [SM 1/2] · ⚔️ Boss · 5次 · 削血 0T/1C"))
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
-                (should (equal org-ladder-sm--last-hud
-                               "SM 2/2 · 🌱 幼苗 (新卡) · hidden\n✓ 🏆 击败 Boss (5次 · 1子卡)"))
+                (should (equal org-ladder-notify-last-text
+                               "当前 [SM 2/2] · 🌱 幼苗 (新卡) · hidden\n上张 ✓ 🏆 击败 Boss (5次 · 1子卡)"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
-                (should (equal org-ladder-sm--last-hud
-                               "SM 2/2 · 🌱 幼苗 (新卡) · revealed"))
+                (should (equal org-ladder-notify-last-text
+                               "当前 [SM 2/2] · 🌱 幼苗 (新卡) · revealed"))
                 (cl-letf (((symbol-function 'read-multiple-choice)
                            (lambda (&rest _) '(?r "good"))))
                   (org-sm-review-confirm))

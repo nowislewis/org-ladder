@@ -23,10 +23,10 @@
 
 (require 'org)
 (require 'cl-lib)
+(require 'org-ladder)
 (require 'org-ladder-stock)
+(require 'org-ladder-notify)
 
-(defvar org-ladder--cache)
-(defvar org-ladder--cache-time)
 (defvar org-sm-review-start-hook)
 (defvar org-sm-after-review-functions)
 (defvar org-sm-after-card-change-functions)
@@ -34,9 +34,6 @@
 (defvar org-sm-feedback-function)
 (defvar org-sm-finish-function)
 (declare-function org-sm-default-feedback "org-sm")
-(declare-function posframe-workable-p "posframe")
-(declare-function posframe-show "posframe")
-(declare-function posframe-poshandler-window-bottom-right-corner "posframe")
 
 (defgroup org-ladder-sm nil
   "org-sm review score source for org-ladder."
@@ -100,9 +97,7 @@ file — `find-file-noselect' on hundreds of files can take many seconds."
             (org-ladder-sm--scan-file file tbl)
           (error (message "org-ladder-sm: error in %s: %s"
                           file (error-message-string err))))))
-    (let (result)
-      (maphash (lambda (k v) (push (cons k v) result)) tbl)
-      result)))
+    (org-ladder-hash-to-alist tbl)))
 
 (with-eval-after-load 'org-ladder
   (add-to-list 'org-ladder-score-sources #'org-ladder-sm--collect))
@@ -164,36 +159,8 @@ accumulated during an `org-sm' review session.")
       (format "📖 阅读池 (%d次%s)" rev
               (if (and days (> days 0)) (format " · %dd" days) ""))))))
 
-(defconst org-ladder-sm--hud-buffer " *org-ladder-sm-hud*"
-  "Posframe buffer name for the bottom-right review HUD.")
-
-(defvar org-ladder-sm--last-hud nil
-  "Last formatted HUD text rendered by `org-ladder-sm--show-hud'.")
-
-(defun org-ladder-sm--show-hud (text &optional timeout)
-  "Show TEXT in a bottom-right posframe when graphical, else return TEXT."
-  (setq org-ladder-sm--last-hud text)
-  (if (and (display-graphic-p)
-           (require 'posframe nil t)
-           (posframe-workable-p))
-      (let ((padded (concat " " (replace-regexp-in-string "\n" " \n " text) " ")))
-        (posframe-show org-ladder-sm--hud-buffer
-                       :string padded
-                       :poshandler #'posframe-poshandler-window-bottom-right-corner
-                       :x-pixel-offset -12
-                       :y-pixel-offset -12
-                       :left-fringe 8
-                       :right-fringe 8
-                       :internal-border-width 1
-                       :internal-border-color (or (face-foreground 'shadow nil t) "#555555")
-                       :background-color (face-background 'default nil t)
-                       :foreground-color (face-foreground 'default nil t)
-                       :timeout timeout)
-        nil)
-    text))
-
-(defun org-ladder-sm-format-hud (state)
-  "Format the bottom-right HUD text for review STATE plist."
+(defun org-ladder-sm-prompt (state)
+  "Present review STATE in the bottom-right HUD with clear 当前 / 上张 lines."
   (let* ((card   (plist-get state :card))
          (pos    (or (plist-get state :position) "SM"))
          (ban    (org-ladder-sm-banner card))
@@ -201,15 +168,11 @@ accumulated during an `org-sm' review session.")
                    (if (eq (plist-get state :cloze-state) 'hidden)
                        "hidden" "revealed")))
          (prev   (plist-get state :prev))
-         (line1  (string-join (delq nil (list pos ban cstate)) " · ")))
-    (if prev
-        (format "%s\n✓ %s" line1 prev)
-      line1)))
-
-(defun org-ladder-sm-prompt (state)
-  "Present review STATE in the bottom-right HUD (or echo area in terminal)."
-  (when-let* ((fallback (org-ladder-sm--show-hud (org-ladder-sm-format-hud state) nil)))
-    (message "%s" (replace-regexp-in-string "\n" "  |  " fallback))))
+         (title  (format "当前 [%s] · %s"
+                         pos (string-join (delq nil (list ban cstate)) " · ")))
+         (body   (and prev (format "上张 ✓ %s" prev))))
+    (when-let* ((fallback (org-ladder-notify body :title title)))
+      (message "%s" (replace-regexp-in-string "\n" "  |  " fallback)))))
 
 (defun org-ladder-sm--on-card-change (_event)
   "Invalidate derived score caches after any card mutation."
@@ -281,8 +244,10 @@ accumulated during an `org-sm' review session.")
          (if prev (format "  [last: %s]" prev) ""))))))
 
 (defun org-ladder-sm-bonfire (&optional prev _aborted)
-  "Present bonfire summary in the bottom-right HUD (auto-hiding after 4s)."
-  (org-ladder-sm--show-hud (org-ladder-sm-bonfire-text prev) 4))
+  "Present bonfire summary via `org-ladder-notify' (auto-hiding after 4s)."
+  (org-ladder-notify (and prev (format "上张 ✓ %s" prev))
+                     :title (org-ladder-sm-bonfire-text)
+                     :timeout 4))
 
 ;;;###autoload
 (defun org-ladder-sm-setup-review-hook ()

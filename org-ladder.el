@@ -107,6 +107,12 @@ Legend tier has no upper bound.")
         ((= (nth 2 key) 0) 'month)
         (t                 'day)))
 
+(defun org-ladder-hash-to-alist (tbl)
+  "Convert hash-table TBL to an alist of (KEY . VALUE)."
+  (let (result)
+    (maphash (lambda (k v) (push (cons k v) result)) tbl)
+    result))
+
 (defun org-ladder-time-key-to-month (key)
   "Return (YEAR MONTH) for KEY.  Week keys resolve to their ISO Monday's month."
   (pcase (org-ladder-time-key-granularity key)
@@ -116,14 +122,14 @@ Legend tier has no upper bound.")
      (let* ((year  (nth 0 key))
             (week  (nth 2 key))
             (jan4  (encode-time 0 0 0 4 1 year))
-            (j-dow (nth 6 (decode-time jan4)))
+            (j-dow (decoded-time-weekday (decode-time jan4)))
             (w1-mon (time-subtract
                      jan4 (seconds-to-time
                            (* (mod (1- (if (= j-dow 0) 7 j-dow)) 7) 86400))))
             (monday (time-add w1-mon
                               (seconds-to-time (* (1- week) 7 86400))))
             (d (decode-time monday)))
-       (list (nth 5 d) (nth 4 d))))))
+       (list (decoded-time-year d) (decoded-time-month d))))))
 
 (defun org-ladder-time-parse-iso (string)
   "Return a day key for the first YYYY-MM-DD found in STRING, or nil."
@@ -140,7 +146,7 @@ Legend tier has no upper bound.")
 (defun org-ladder-time-from-emacs (time)
   "Convert Emacs TIME to a day key (YEAR MONTH DAY)."
   (let ((d (decode-time time)))
-    (list (nth 5 d) (nth 4 d) (nth 3 d))))
+    (list (decoded-time-year d) (decoded-time-month d) (decoded-time-day d))))
 
 (defun org-ladder-time-today ()
   "Return today as a day key."
@@ -159,12 +165,12 @@ Legend tier has no upper bound.")
     ('week
      (let* ((year (nth 0 key)) (month (nth 1 key)) (day (nth 2 key))
             (t0   (org-ladder-time-encode year month day))
-            (dow  (nth 6 (decode-time t0)))
+            (dow  (decoded-time-weekday (decode-time t0)))
             (mon  (time-subtract t0 (seconds-to-time (* (mod (1- dow) 7) 86400))))
             (md   (decode-time mon))
-            (my   (nth 5 md))
+            (my   (decoded-time-year md))
             (jan4 (encode-time 0 0 0 4 1 my))
-            (j-dow (nth 6 (decode-time jan4)))
+            (j-dow (decoded-time-weekday (decode-time jan4)))
             (w1-mon (time-subtract
                      jan4 (seconds-to-time
                            (* (mod (1- (if (= j-dow 0) 7 j-dow)) 7) 86400))))
@@ -205,28 +211,19 @@ Legend tier has no upper bound.")
                                              '(1))))))
              (bucket (org-ladder-time-truncate day-key granularity)))
         (puthash bucket (+ (gethash bucket buckets 0) (cdr entry)) buckets)))
-    (let (result)
-      (maphash (lambda (k v) (push (cons k v) result)) buckets)
-      (sort result (lambda (a b)
-                     (or (< (nth 0 (car a)) (nth 0 (car b)))
-                         (and (= (nth 0 (car a)) (nth 0 (car b)))
-                              (or (< (nth 1 (car a)) (nth 1 (car b)))
-                                  (and (= (nth 1 (car a)) (nth 1 (car b)))
-                                       (< (nth 2 (car a)) (nth 2 (car b))))))))))))
+    (sort (org-ladder-hash-to-alist buckets)
+          (lambda (a b) (value< (car a) (car b))))))
 
 ;;; ── Score aggregation ────────────────────────────────────────────────────────
 
 (defun org-ladder--month-key (time)
   "Return (year month) from Emacs TIME."
   (let ((d (decode-time time)))
-    (list (nth 5 d) (nth 4 d))))
+    (list (decoded-time-year d) (decoded-time-month d))))
 
 (defun org-ladder--sort-monthly (rows)
   "Sort monthly score ROWS descending by (year month)."
-  (sort rows (lambda (a b)
-               (or (> (caar a) (caar b))
-                   (and (= (caar a) (caar b))
-                        (> (cadar a) (cadar b)))))))
+  (sort rows (lambda (a b) (value< (car b) (car a)))))
 
 (defun org-ladder--collect-raw ()
   "Return a flat list of all raw (TIME-KEY . SCORE) entries from every source.
