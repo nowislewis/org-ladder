@@ -42,22 +42,6 @@ All scores are aggregated to month granularity before tier calculation."
   :type '(repeat function)
   :group 'org-ladder)
 
-(defcustom org-ladder-retention-rate 0.1
-  "Fraction of last month's score carried over on monthly reset (0.0–1.0)."
-  :type 'float
-  :group 'org-ladder)
-
-(defcustom org-ladder-monthly-reset-day 1
-  "Day of month (1–31) on which the monthly reset occurs."
-  :type 'integer
-  :group 'org-ladder)
-
-(defcustom org-ladder-storage-file
-  (expand-file-name "org-ladder-history.el" user-emacs-directory)
-  "File used to persist the last-reset month across Emacs sessions."
-  :type 'file
-  :group 'org-ladder)
-
 ;;; ── Tier configuration ───────────────────────────────────────────────────────
 
 (defconst org-ladder-tiers
@@ -76,11 +60,11 @@ Legend tier has no upper bound.")
 (defvar org-ladder--cache nil
   "Alist of ((year month) . score) for every month seen; nil when stale.")
 
+(defvar org-ladder--daily-cache nil
+  "Hash-table of day-key -> score cached alongside `org-ladder--cache'.")
+
 (defvar org-ladder--cache-time nil
   "Emacs time of last cache computation.")
-
-(defvar org-ladder--last-reset-month nil
-  "(year month) of the most recent monthly reset.")
 
 ;;; ── Time key API ─────────────────────────────────────────────────────────────
 ;;
@@ -152,68 +136,6 @@ Legend tier has no upper bound.")
   "Return today as a day key."
   (org-ladder-time-from-emacs (current-time)))
 
-(defun org-ladder-time-this-week ()
-  "Return the Monday of the current ISO week as a day key."
-  (org-ladder-time-truncate (org-ladder-time-today) 'week))
-
-(defun org-ladder-time-truncate (key granularity)
-  "Truncate KEY to GRANULARITY (`day', `week', `month', or `year')."
-  (pcase granularity
-    ('day   key)
-    ('month (apply #'org-ladder-time-key-month (org-ladder-time-key-to-month key)))
-    ('year  (org-ladder-time-key-month (nth 0 key) 1))
-    ('week
-     (let* ((year (nth 0 key)) (month (nth 1 key)) (day (nth 2 key))
-            (t0   (org-ladder-time-encode year month day))
-            (dow  (decoded-time-weekday (decode-time t0)))
-            (mon  (time-subtract t0 (seconds-to-time (* (mod (1- dow) 7) 86400))))
-            (md   (decode-time mon))
-            (my   (decoded-time-year md))
-            (jan4 (encode-time 0 0 0 4 1 my))
-            (j-dow (decoded-time-weekday (decode-time jan4)))
-            (w1-mon (time-subtract
-                     jan4 (seconds-to-time
-                           (* (mod (1- (if (= j-dow 0) 7 j-dow)) 7) 86400))))
-            (week (1+ (floor (/ (float-time (time-subtract mon w1-mon))
-                                (* 7 86400))))))
-       (org-ladder-time-key-week my week)))))
-
-(defun org-ladder-time-filter-range (entries start end)
-  "Keep only ENTRIES whose time key falls within day keys START..END."
-  (let ((s (apply #'org-ladder-time-encode start))
-        (e (apply #'org-ladder-time-encode end)))
-    (seq-filter
-     (lambda (entry)
-       (let ((rep (pcase (org-ladder-time-key-granularity (car entry))
-                    ('day   (apply #'org-ladder-time-encode (car entry)))
-                    ('month (org-ladder-time-encode
-                             (nth 0 (car entry)) (nth 1 (car entry)) 1))
-                    ('week  (apply #'org-ladder-time-encode
-                                   (org-ladder-time-truncate
-                                    (apply #'org-ladder-time-key-day
-                                           (append (org-ladder-time-key-to-month
-                                                    (car entry))
-                                                   '(1)))
-                                    'week))))))
-         (and (not (time-less-p rep s)) (not (time-less-p e rep)))))
-     entries)))
-
-(defun org-ladder-time-group-scores (entries granularity)
-  "Aggregate ENTRIES by GRANULARITY; return a chronologically sorted alist."
-  (let ((buckets (make-hash-table :test 'equal)))
-    (dolist (entry entries)
-      ;; Normalise to a day key before truncating (needed for 'week)
-      (let* ((key     (car entry))
-             (day-key (pcase (org-ladder-time-key-granularity key)
-                        ('day key)
-                        (_    (apply #'org-ladder-time-key-day
-                                     (append (org-ladder-time-key-to-month key)
-                                             '(1))))))
-             (bucket (org-ladder-time-truncate day-key granularity)))
-        (puthash bucket (+ (gethash bucket buckets 0) (cdr entry)) buckets)))
-    (sort (org-ladder-hash-to-alist buckets)
-          (lambda (a b) (value< (car a) (car b))))))
-
 ;;; ── Score aggregation ────────────────────────────────────────────────────────
 
 (defun org-ladder--month-key (time)
@@ -237,51 +159,37 @@ Errors in individual sources are logged and skipped."
     result))
 
 (defun org-ladder--normalize-entries (raw-entries)
-  "Aggregate RAW-ENTRIES into a monthly alist ((year month) . score).
-Accepts time keys of any granularity."
+  "Aggregate RAW-ENTRIES into a monthly alist ((year month) . score)."
   (let ((tbl (make-hash-table :test 'equal)))
     (dolist (entry raw-entries)
       (let ((ym (org-ladder-time-key-to-month (car entry))))
         (puthash ym (+ (gethash ym tbl 0) (cdr entry)) tbl)))
-    (let (rows)
-      (maphash (lambda (ym s) (push (cons ym s) rows)) tbl)
-      rows)))
-
-(defun org-ladder-calculate-scores-by-source ()
-  "Return scores broken down by source.
-Result: alist of (SOURCE-FN . MONTHLY-ROWS) where MONTHLY-ROWS is
-a sorted alist of ((year month) . score)."
-  (mapcar (lambda (src)
-            (cons src
-                  (condition-case err
-                      (org-ladder--sort-monthly
-                       (org-ladder--normalize-entries (funcall src)))
-                    (error
-                     (message "org-ladder: source %s: %s" src
-                              (error-message-string err))
-                     nil))))
-          org-ladder-score-sources))
-
-(defun org-ladder--collect-daily ()
-  "Return a hash-table of day-key -> score across all sources."
-  (let ((tbl (make-hash-table :test 'equal)))
-    (dolist (e (org-ladder--collect-raw))
-      (when (eq (org-ladder-time-key-granularity (car e)) 'day)
-        (puthash (car e) (+ (gethash (car e) tbl 0) (cdr e)) tbl)))
-    tbl))
+    (org-ladder-hash-to-alist tbl)))
 
 (defun org-ladder-calculate-scores (&optional force)
   "Return alist ((year month) . score) for every month with data.
+Also populates `org-ladder--daily-cache' in the same single pass.
 Cached for 5 minutes; pass FORCE to bypass."
   (when (or force
             (null org-ladder--cache)
+            (null org-ladder--daily-cache)
             (null org-ladder--cache-time)
             (> (float-time (time-since org-ladder--cache-time)) 300))
-    (setq org-ladder--cache
-          (org-ladder--sort-monthly
-           (org-ladder--normalize-entries (org-ladder--collect-raw)))
-          org-ladder--cache-time (current-time)))
+    (let ((raw   (org-ladder--collect-raw))
+          (daily (make-hash-table :test 'equal)))
+      (dolist (e raw)
+        (when (eq (org-ladder-time-key-granularity (car e)) 'day)
+          (puthash (car e) (+ (gethash (car e) daily 0) (cdr e)) daily)))
+      (setq org-ladder--daily-cache daily
+            org-ladder--cache (org-ladder--sort-monthly
+                               (org-ladder--normalize-entries raw))
+            org-ladder--cache-time (current-time))))
   org-ladder--cache)
+
+(defun org-ladder--collect-daily ()
+  "Return cached hash-table of day-key -> score across all sources."
+  (org-ladder-calculate-scores)
+  org-ladder--daily-cache)
 
 (defun org-ladder-current-score ()
   "Return the current month's total score (0 if none)."
@@ -293,7 +201,7 @@ Cached for 5 minutes; pass FORCE to bypass."
 (defun org-ladder-force-refresh ()
   "Invalidate cache and recompute scores."
   (interactive)
-  (setq org-ladder--cache nil org-ladder--cache-time nil)
+  (setq org-ladder--cache nil org-ladder--daily-cache nil org-ladder--cache-time nil)
   (message "Org Ladder: score %d" (org-ladder-current-score)))
 
 ;;; ── Tier calculation ─────────────────────────────────────────────────────────
@@ -318,13 +226,6 @@ Cached for 5 minutes; pass FORCE to bypass."
                       (- progress (* (1- sub) sub-sz))
                       sub-sz))))))
       (list 'bronze 1 10 500 50 0 50))))
-
-;;; ── Monthly reset ────────────────────────────────────────────────────────────
-
-(defun org-ladder-check-monthly-reset ()
-  "No-op kept for backward compatibility.
-Season rank is purely decorative; permanent stock is never reset."
-  nil)
 
 (defun org-ladder--insert-badge-shelf (all-scores)
   "Insert permanent badge shelf from ALL-SCORES."
@@ -369,43 +270,6 @@ Season rank is purely decorative; permanent stock is never reset."
     (if (eq name 'legend) (org-ladder--tier-display-name name)
       (format "%s %d" (org-ladder--tier-display-name name) sub))))
 
-(defun org-ladder--tier-string (score)
-  "Return a compact display string for SCORE."
-  (pcase-let ((`(,name ,sub ,nsubs ,_to-t ,_to-s ,prog ,sub-sz)
-               (org-ladder-get-tier-info score)))
-    (if (eq name 'legend)
-        (format "%s (%d)" (org-ladder--tier-display-name name) score)
-      (let* ((tier-entry (assoc name org-ladder-tiers))
-             (tier-min   (nth 0 (cdr tier-entry)))
-             (tier-max   (nth 1 (cdr tier-entry))))
-        (format "%s %d/%d  sub %s  tier %s  %d/%d"
-                (org-ladder--tier-display-name name) sub nsubs
-                (org-ladder--progress-bar prog sub-sz 10)
-                (org-ladder--progress-bar (- score tier-min) (- tier-max tier-min) 10)
-                score tier-max)))))
-
-(defun org-ladder--bar-chart (values labels title &optional height)
-  "Insert a vertical bar chart for VALUES with LABELS and TITLE.
-HEIGHT is the number of rows (default 8)."
-  (let* ((height (or height 8))
-         (max-v  (apply #'max (cons 1 values)))
-         (width  3)
-         (pad    "  "))
-    (insert (format "** %s  (max: %d)\n" title max-v))
-    (dotimes (row height)
-      (let ((threshold (/ (* (- height row) max-v) (float height))))
-        (insert (format "%s%4d " pad (round threshold)))
-        (dolist (v values)
-          (insert (if (> v threshold) (make-string width ?█) (make-string width ? )))
-          (insert " "))
-        (insert "\n")))
-    (insert (format "%s     %s\n" pad
-                    (mapconcat (lambda (_) (make-string width ?─)) values "─")))
-    (insert (format "%s     %s\n" pad
-                    (mapconcat (lambda (v) (format (format "%%-%ds " width) v)) values "")))
-    (insert (format "%s     %s\n\n" pad
-                    (mapconcat (lambda (l) (format (format "%%-%ds " width) l)) labels "")))))
-
 ;;; ── Commands ─────────────────────────────────────────────────────────────────
 
 ;;;###autoload
@@ -430,7 +294,6 @@ HEIGHT is the number of rows (default 8)."
 (defun org-ladder-status ()
   "Show today's Org Ladder minutes plus one short motivational line."
   (interactive)
-  (org-ladder-check-monthly-reset)
   (let* ((daily-tbl (org-ladder--collect-daily))
          (today-score (gethash (org-ladder-time-today) daily-tbl 0))
          (quote (nth (random (length org-ladder-status-quotes))
@@ -438,24 +301,17 @@ HEIGHT is the number of rows (default 8)."
     (message "Org Ladder: %d min today — %s" today-score quote)))
 
 ;;;###autoload
-(defun org-ladder--src-label (src)
-  "Return a short display name for source function SRC."
-  (replace-regexp-in-string "--.*$" "" (symbol-name src)))
-
-;;;###autoload
 (defun org-ladder-show-details (&optional months)
   "Show a compact Org Ladder dashboard.
 This version is intentionally plain-text (not `org-mode') so custom faces
 for the GitHub-style heatmap are preserved reliably."
   (interactive "P")
-  (org-ladder-check-monthly-reset)
-  (let* ((score      (org-ladder-current-score))
+  (let* ((all-scores (org-ladder-calculate-scores))
+         (score      (org-ladder-current-score))
          (info       (org-ladder-get-tier-info score))
          (cur-ym     (org-ladder--month-key (current-time)))
          (cur-year   (car cur-ym))
          (cur-month  (cadr cur-ym))
-         (by-source  (org-ladder-calculate-scores-by-source))
-         (all-scores (org-ladder-calculate-scores))
          (history    (cond ((null months)  (seq-take all-scores 12))
                            ((listp months) all-scores)
                            (t              (seq-take all-scores months))))

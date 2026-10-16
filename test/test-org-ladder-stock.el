@@ -135,7 +135,7 @@
             (org-mode)
             (insert "* Boss\n:PROPERTIES:\n:SRS_TYPE: topic\n:END:\n:LOGBOOK:\n")
             (dotimes (_ 5) (insert "- topic a=1.5 [2026-10-01 Thu]\n"))
-            (insert ":END:\n** Memory\n:PROPERTIES:\n:SRS_TYPE: cloze\n:END:\n{{answer}}\n")
+            (insert ":END:\nsub\n** Memory\n:PROPERTIES:\n:SRS_TYPE: cloze\n:END:\n{{answer}}\n")
             (goto-char (point-min))
             (let ((boss (point-marker))
                   (cloze (save-excursion (outline-next-heading) (point-marker))))
@@ -144,9 +144,14 @@
               (cl-letf (((symbol-function 'recenter) #'ignore))
                 (org-sm--review-markers (list boss cloze))
                 (should (org-sm--current-review-card-p))
+                (should-not (org-ladder-sm--hud-hide-p nil))
                 (should-not (local-variable-p 'header-line-format))
                 (should (equal org-ladder-notify-last-text
                                "⚔️ Boss · 5次 · 1C   [1/2]"))
+                ;; Extracting a child card while reviewing updates the Boss HUD immediately:
+                (org-sm-extract 'topic "sub" 0 3)
+                (should (equal org-ladder-notify-last-text
+                               "⚔️ Boss · 5次 · 1T/1C   [1/2]\n✓ 🗡️ 产出子卡 +1"))
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
                 (should (equal org-ladder-notify-last-text
@@ -183,6 +188,21 @@
     (should (equal (org-ladder-stock--files) '("a.org" "b.org"))))
   (let ((org-ladder-stock-files 'org-ladder-nonexistent-files-fn))
     (should-error (org-ladder-stock--files) :type 'user-error)))
+
+(ert-deftest org-sm-tree-filter-shorthands ()
+  "Verify @boss, @cloze, @topic filters in `org-sm--tree-filter'."
+  (with-temp-buffer
+    (org-mode)
+    (insert "* Boss\n:PROPERTIES:\n:SRS_TYPE: topic\n:END:\n:LOGBOOK:\n")
+    (dotimes (_ 5) (insert "- topic a=1.5 [2026-10-01 Thu]\n"))
+    (insert ":END:\n* Cloze\n:PROPERTIES:\n:SRS_TYPE: cloze\n:END:\n")
+    (goto-char (point-min))
+    (should (funcall (org-sm--tree-filter nil "@boss")))
+    (should (funcall (org-sm--tree-filter nil "@topic")))
+    (should-not (funcall (org-sm--tree-filter nil "@cloze")))
+    (outline-next-heading)
+    (should (funcall (org-sm--tree-filter nil "@cloze")))
+    (should-not (funcall (org-sm--tree-filter nil "@boss")))))
 
 (provide 'test-org-ladder-stock)
 ;;; test-org-ladder-stock.el ends here

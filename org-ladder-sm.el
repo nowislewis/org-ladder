@@ -33,7 +33,11 @@
 (defvar org-sm-prompt-function)
 (defvar org-sm-feedback-function)
 (defvar org-sm-finish-function)
+(defvar org-sm--current-buffer)
+(defvar org-sm-capture-parent-marker)
 (declare-function org-sm-default-feedback "org-sm")
+(declare-function org-sm--current-review-card-p "org-sm")
+(declare-function org-sm--show-prompt "org-sm")
 
 (defgroup org-ladder-sm nil
   "org-sm review score source for org-ladder."
@@ -186,6 +190,11 @@ accumulated during an `org-sm' review session.")
       (format "📖 Topic · %d次%s" rev
               (if (and days (> days 0)) (format " · %dd" days) ""))))))
 
+(defun org-ladder-sm--hud-hide-p (_info)
+  "Auto-hide persistent HUD when leaving the review card or workbench."
+  (not (or (eq (current-buffer) (bound-and-true-p org-sm--current-buffer))
+           (bound-and-true-p org-sm-capture-parent-marker))))
+
 (defun org-ladder-sm-prompt (state)
   "Present review STATE in the bottom-right HUD with stage on the left."
   (let* ((card    (plist-get state :card))
@@ -202,12 +211,18 @@ accumulated during an `org-sm' review session.")
                           (string-join (delq nil (list ban cstate)) " · ")
                           pos))
          (body    (and prev (format "✓ %s" prev))))
-    (when-let* ((fallback (org-ladder-notify body :title title)))
+    (when-let* ((fallback (org-ladder-notify body :title title
+                                             :hidehandler #'org-ladder-sm--hud-hide-p)))
       (message "%s" (replace-regexp-in-string "\n" "  |  " fallback)))))
 
-(defun org-ladder-sm--on-card-change (_event)
-  "Invalidate derived score caches after any card mutation."
-  (setq org-ladder--cache nil org-ladder--cache-time nil))
+(defun org-ladder-sm--on-card-change (event)
+  "Invalidate derived score caches and refresh active HUD on child extraction."
+  (setq org-ladder--cache nil org-ladder--daily-cache nil org-ladder--cache-time nil)
+  (when (and (eq (plist-get event :action) 'extract)
+             (fboundp 'org-sm--current-review-card-p)
+             (org-sm--current-review-card-p)
+             (fboundp 'org-sm--show-prompt))
+    (org-sm--show-prompt "🗡️ 产出子卡 +1")))
 
 (defun org-ladder-sm--on-review-event (event)
   "Accumulate session stats and O(1) stock ledger deltas for EVENT."

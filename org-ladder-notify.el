@@ -53,11 +53,11 @@
     (string-join (delq nil (list t-str b-str)) "\n")))
 
 ;;;###autoload
-(cl-defun org-ladder-notify (body &key title timeout (buffer org-ladder-notify-buffer))
+(cl-defun org-ladder-notify (body &key title timeout hidehandler (buffer org-ladder-notify-buffer))
   "Show a bottom-right notification with optional TITLE, BODY, and TIMEOUT.
-When TIMEOUT is nil, the popup remains visible until replaced or closed via
-`org-ladder-notify-close'.  Returns nil when shown in a graphical posframe,
-or the plain formatted string when falling back to non-graphical mode."
+When TIMEOUT is nil, the popup remains visible until replaced, hidden by
+HIDEHANDLER, or closed via `org-ladder-notify-close'.  Returns nil when shown
+in a graphical posframe, or the plain formatted string in non-graphical mode."
   (let ((text (org-ladder-notify-format body title)))
     (setq org-ladder-notify-last-text (substring-no-properties text))
     (if (and (display-graphic-p)
@@ -75,7 +75,8 @@ or the plain formatted string when falling back to non-graphical mode."
                          :internal-border-color (or (face-foreground 'shadow nil t) "#555555")
                          :background-color (face-background 'default nil t)
                          :foreground-color (face-foreground 'default nil t)
-                         :timeout timeout)
+                         :timeout timeout
+                         :hidehandler hidehandler)
           nil)
       org-ladder-notify-last-text)))
 

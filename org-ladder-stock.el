@@ -123,6 +123,16 @@ Falls back to `org-ladder-sm--files' when unset so one file list serves both."
                                   (plist-get card :child-clozes))))))
    (org-sm-cards-in-file file)))
 
+(declare-function org-id-goto "org-id")
+
+(defun org-ladder-stock--title-button (card)
+  "Return CARD's title, clickable via `org-id-goto' when `:id' is present."
+  (let ((title (or (plist-get card :title) ""))
+        (id    (plist-get card :id)))
+    (if id
+        (buttonize title (lambda (cid) (require 'org-id) (org-id-goto cid)) id)
+      title)))
+
 ;;;###autoload
 (defun org-ladder-stock-cards ()
   "Return a list of plists describing every org-sm card found.
@@ -231,7 +241,8 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                       (plist-get sum :topic-pool)))
       (when-let* ((deep (plist-get sum :deepest)))
         (insert (format "  最远   %dd  %s\n"
-                        (plist-get deep :interval-days) (plist-get deep :title))))
+                        (plist-get deep :interval-days)
+                        (org-ladder-stock--title-button deep))))
       (insert "\n"))))
 
 ;;;###autoload
@@ -272,7 +283,8 @@ With prefix argument N, also list the N deepest Cloze cards and N top Bosses."
                         (plist-get sum :topic-pool)))
         (when-let* ((deep (plist-get sum :deepest)))
           (insert (format "\n  最深的一棵    %dd  %s\n"
-                          (plist-get deep :interval-days) (plist-get deep :title))))
+                          (plist-get deep :interval-days)
+                          (org-ladder-stock--title-button deep))))
         (when (> n 0)
           (insert (propertize (format "\n🛡️ 最远的 %d 棵 Cloze\n" n)
                               'face '(:weight bold :height 1.2)))
@@ -288,7 +300,7 @@ With prefix argument N, also list the N deepest Cloze cards and N top Bosses."
                                  n))
               (insert (format "  %4dd  %s\n"
                               (plist-get c :interval-days)
-                              (plist-get c :title)))))
+                              (org-ladder-stock--title-button c)))))
           (when-let* ((bosses (seq-take (plist-get sum :bosses) n)))
             (insert (propertize (format "\n⚔️ 盘踞最久的 %d 只守林 Boss\n"
                                         (length bosses))
@@ -301,7 +313,7 @@ With prefix argument N, also list the N deepest Cloze cards and N top Bosses."
                                 (if (> (+ ct cc) 0)
                                     (format "[削血 %dT/%dC]" ct cc)
                                   "[0 cloze]")
-                                (plist-get b :title)))))))
+                                (org-ladder-stock--title-button b)))))))
         (goto-char (point-min))
         (setq buffer-read-only t)))
     (display-buffer buf)))
