@@ -30,10 +30,13 @@
 (defvar org-sm-review-start-hook)
 (defvar org-sm-after-review-functions)
 (defvar org-sm-after-card-change-functions)
-(defvar org-sm-banner-function)
+(defvar org-sm-prompt-function)
 (defvar org-sm-feedback-function)
 (defvar org-sm-finish-function)
 (declare-function org-sm-default-feedback "org-sm")
+(declare-function posframe-workable-p "posframe")
+(declare-function posframe-show "posframe")
+(declare-function posframe-poshandler-window-bottom-right-corner "posframe")
 
 (defgroup org-ladder-sm nil
   "org-sm review score source for org-ladder."
@@ -141,14 +144,72 @@ accumulated during an `org-sm' review session.")
            org-ladder-stock-boss-threshold)))
 
 (defun org-ladder-sm-banner (card)
-  "Return concise Boss banner string for CARD when it is a Boss topic, else nil."
-  (when (org-ladder-sm--boss-card-p card)
-    (let ((rev (or (plist-get card :reviews) 0))
-          (ct  (or (plist-get card :child-topics) 0))
-          (cc  (or (plist-get card :child-clozes) 0)))
+  "Return stage / Boss banner string for CARD plist."
+  (let ((type (plist-get card :type))
+        (days (plist-get card :interval-days))
+        (rev  (or (plist-get card :reviews) 0))
+        (ct   (or (plist-get card :child-topics) 0))
+        (cc   (or (plist-get card :child-clozes) 0)))
+    (cond
+     ((org-ladder-sm--boss-card-p card)
       (if (> (+ ct cc) 0)
           (format "⚔️ Boss · %d次 · 削血 %dT/%dC" rev ct cc)
-        (format "⚔️ Boss · %d次 · 0子卡" rev)))))
+        (format "⚔️ Boss · %d次 · 0子卡" rev)))
+     ((eq type 'cloze)
+      (let ((stage (or (org-ladder-sm--stage-label (or days 0)) "🌱 幼苗")))
+        (if (and days (> days 0))
+            (format "%s (%dd)" stage days)
+          (format "%s (新卡)" stage))))
+     ((eq type 'topic)
+      (format "📖 阅读池 (%d次%s)" rev
+              (if (and days (> days 0)) (format " · %dd" days) ""))))))
+
+(defconst org-ladder-sm--hud-buffer " *org-ladder-sm-hud*"
+  "Posframe buffer name for the bottom-right review HUD.")
+
+(defvar org-ladder-sm--last-hud nil
+  "Last formatted HUD text rendered by `org-ladder-sm--show-hud'.")
+
+(defun org-ladder-sm--show-hud (text &optional timeout)
+  "Show TEXT in a bottom-right posframe when graphical, else return TEXT."
+  (setq org-ladder-sm--last-hud text)
+  (if (and (display-graphic-p)
+           (require 'posframe nil t)
+           (posframe-workable-p))
+      (let ((padded (concat " " (replace-regexp-in-string "\n" " \n " text) " ")))
+        (posframe-show org-ladder-sm--hud-buffer
+                       :string padded
+                       :poshandler #'posframe-poshandler-window-bottom-right-corner
+                       :x-pixel-offset -12
+                       :y-pixel-offset -12
+                       :left-fringe 8
+                       :right-fringe 8
+                       :internal-border-width 1
+                       :internal-border-color (or (face-foreground 'shadow nil t) "#555555")
+                       :background-color (face-background 'default nil t)
+                       :foreground-color (face-foreground 'default nil t)
+                       :timeout timeout)
+        nil)
+    text))
+
+(defun org-ladder-sm-format-hud (state)
+  "Format the bottom-right HUD text for review STATE plist."
+  (let* ((card   (plist-get state :card))
+         (pos    (or (plist-get state :position) "SM"))
+         (ban    (org-ladder-sm-banner card))
+         (cstate (when (eq (plist-get card :type) 'cloze)
+                   (if (eq (plist-get state :cloze-state) 'hidden)
+                       "hidden" "revealed")))
+         (prev   (plist-get state :prev))
+         (line1  (string-join (delq nil (list pos ban cstate)) " · ")))
+    (if prev
+        (format "%s\n✓ %s" line1 prev)
+      line1)))
+
+(defun org-ladder-sm-prompt (state)
+  "Present review STATE in the bottom-right HUD (or echo area in terminal)."
+  (when-let* ((fallback (org-ladder-sm--show-hud (org-ladder-sm-format-hud state) nil)))
+    (message "%s" (replace-regexp-in-string "\n" "  |  " fallback))))
 
 (defun org-ladder-sm--on-card-change (_event)
   "Invalidate derived score caches after any card mutation."
@@ -186,14 +247,20 @@ accumulated during an `org-sm' review session.")
         "已筛选"))
      ((org-ladder-sm--promoted-stage event)
       (let ((prom (org-ladder-sm--promoted-stage event)))
-        (format "%dd → %dd  %s → %s"
+        (format "✨ %dd → %dd  %s → %s"
                 (or old 0) new (car prom) (cdr prom))))
+     ((eq action 'cloze)
+      (if (and new (> new 0))
+          (format "%dd → %dd · %s"
+                  (or old 0) new (org-ladder-sm--stage-label new))
+        (format "→ %s · 🌱 幼苗"
+                (or (plist-get event :interval-label) "学习中"))))
      ((fboundp 'org-sm-default-feedback)
       (org-sm-default-feedback event))
      (t (format "%s" action)))))
 
-(defun org-ladder-sm-bonfire (&optional prev _aborted)
-  "Format bonfire summary at the end or stop of an `org-sm' review session."
+(defun org-ladder-sm-bonfire-text (&optional prev)
+  "Return bonfire summary text at the end or stop of an `org-sm' session."
   (let* ((rev  (or (plist-get org-ladder-sm--session-stats :reviewed) 0))
          (dis  (or (plist-get org-ladder-sm--session-stats :dismissed) 0))
          (slain (or (plist-get org-ladder-sm--session-stats :boss-slain) 0))
@@ -213,14 +280,18 @@ accumulated during an `org-sm' review session.")
            "")
          (if prev (format "  [last: %s]" prev) ""))))))
 
+(defun org-ladder-sm-bonfire (&optional prev _aborted)
+  "Present bonfire summary in the bottom-right HUD (auto-hiding after 4s)."
+  (org-ladder-sm--show-hud (org-ladder-sm-bonfire-text prev) 4))
+
 ;;;###autoload
 (defun org-ladder-sm-setup-review-hook ()
-  "Connect `org-ladder' feedback, Boss banner, and bonfire hooks to `org-sm'."
+  "Connect `org-ladder' HUD, feedback, and bonfire hooks to `org-sm'."
   (interactive)
   (add-hook 'org-sm-review-start-hook #'org-ladder-sm--reset-session)
   (add-hook 'org-sm-after-review-functions #'org-ladder-sm--on-review-event)
   (add-hook 'org-sm-after-card-change-functions #'org-ladder-sm--on-card-change)
-  (setq org-sm-banner-function #'org-ladder-sm-banner
+  (setq org-sm-prompt-function #'org-ladder-sm-prompt
         org-sm-feedback-function #'org-ladder-sm-feedback
         org-sm-finish-function #'org-ladder-sm-bonfire))
 
