@@ -32,18 +32,37 @@
                   (directory-files org-ladder-art-directory nil "\\.art\\'"))
           #'string<)))
 
+(defun org-ladder-art--unlock-dates (step)
+  "Return vector of unlock date strings (\"YYYY-MM-DD\") per STEP-point threshold."
+  (let ((days (sort (org-ladder-hash-to-alist (org-ladder--collect-daily))
+                    (lambda (a b) (value< (car a) (car b)))))
+        (acc 0)
+        (next step)
+        dates)
+    (dolist (d days)
+      (setq acc (+ acc (cdr d)))
+      (while (>= acc next)
+        (pcase-let ((`(,y ,m ,day) (car d)))
+          (push (format "%04d-%02d-%02d" y m day) dates))
+        (setq next (+ next step))))
+    (vconcat (nreverse dates))))
+
 (defun org-ladder-art--allocations ()
   "Allocate cumulative total score sequentially across available `.art' files.
 Each artifact requires 4500 points; points spill into the next artifact once
-the previous one reaches 4500.  Return list of (YM-STR ALLOCATED-SCORE ITEM)."
+the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
   (let ((remaining (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores))))
         (step 4500)
+        (dates (org-ladder-art--unlock-dates 4500))
+        (idx 0)
         result)
     (dolist (ym-str (org-ladder-art--available-keys))
       (when-let* ((item (org-ladder-art--read ym-str)))
-        (let ((alloc (min step (max 0 remaining))))
-          (setq remaining (max 0 (- remaining alloc)))
-          (push (list ym-str alloc item) result))))
+        (let ((alloc (min step (max 0 remaining)))
+              (date  (and (< idx (length dates)) (aref dates idx))))
+          (setq remaining (max 0 (- remaining alloc))
+                idx (1+ idx))
+          (push (list ym-str alloc item date) result))))
     (nreverse result)))
 
 (defun org-ladder-art--active-entry ()
@@ -113,15 +132,17 @@ the previous one reaches 4500.  Return list of (YM-STR ALLOCATED-SCORE ITEM)."
                   (propertize "▒▒ " 'face '(:foreground "#444444")))))
       (insert "\n"))))
 
-(defun org-ladder-art--render-buffer (ym-str score item &optional today-score)
-  "Render artifact ITEM for YM-STR according to SCORE."
+(defun org-ladder-art--render-buffer (ym-str score item &optional today-score unlock-date)
+  "Render artifact ITEM for YM-STR according to SCORE and optional UNLOCK-DATE."
   (let* ((max-score 4500.0)
          (ratio (min 1.0 (/ (max 0.0 (float score)) max-score)))
          (donep (>= score 4500))
          (today-gain (and today-score (> today-score 0)
                           (* 100 (/ (float today-score) max-score))))
          (status (if donep
-                     (format "RELIC RESTORED · %s" ym-str)
+                     (format "RELIC RESTORED · %s%s"
+                             ym-str
+                             (if unlock-date (format " · %s 解锁" unlock-date) ""))
                    (format "SIGNAL LOCK · %s  %s %.1f%%%s"
                            ym-str
                            (org-ladder--progress-bar (round (* ratio 36)) 36 10)
@@ -152,12 +173,12 @@ the previous one reaches 4500.  Return list of (YM-STR ALLOCATED-SCORE ITEM)."
          (restored (cl-count-if (lambda (e) (>= (nth 1 e) 4500)) allocs))
          (entry    (org-ladder-art--active-entry)))
     (if entry
-        (pcase-let ((`(,ym-str ,alloc ,item) entry))
+        (pcase-let ((`(,ym-str ,alloc ,item ,date) entry))
           (insert (format "  已完整发掘 %d/%d 件  " restored (length allocs))
                   (buttonize "[🏛️ 查看遗迹陈列室]"
                              (lambda (_) (org-ladder-art-gallery)))
                   "\n")
-          (org-ladder-art--render-buffer ym-str alloc item today-score))
+          (org-ladder-art--render-buffer ym-str alloc item today-score date))
       (insert (format "  no artifact files in %s\n\n" org-ladder-art-directory)))))
 
 ;;;###autoload
@@ -190,9 +211,9 @@ the previous one reaches 4500.  Return list of (YM-STR ALLOCATED-SCORE ITEM)."
                             'face '(:weight bold :height 1.3 :foreground "#66D9EF")))
         (insert (format "按累计总分依次发掘（每件 4500，当前累计 %d），永不锁死残缺。\n\n" total))
         (dolist (entry allocs)
-          (pcase-let ((`(,ym-str ,alloc ,item) entry))
+          (pcase-let ((`(,ym-str ,alloc ,item ,date) entry))
             (when (or (> alloc 0) (eq entry (car allocs)))
-              (org-ladder-art--render-buffer ym-str alloc item))))
+              (org-ladder-art--render-buffer ym-str alloc item nil date))))
         (goto-char (point-min)))
       (special-mode)
       (pop-to-buffer buf))))
