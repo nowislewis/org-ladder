@@ -1,0 +1,20 @@
+(:title "MS-06S 夏亚专用扎古 II · 赤色彗星"
+ :lore "三倍速的赤红独眼在暗处点亮。没有天生的王牌，只有每一次精准的推进。"
+ :shapes
+ ((poly ((25 . 235) (60 . 180) (200 . 180) (235 . 235)) :fill "#9F1239" :stroke "#0F172A" :stroke-width 2)
+           (poly ((95 . 180) (165 . 180) (155 . 235) (105 . 235)) :fill "#334155" :stroke "#0F172A" :stroke-width 2)
+           (poly ((52 . 140) (80 . 136) (86 . 174) (46 . 168)) :fill "#BE123C" :stroke "#0F172A" :stroke-width 2)
+           (poly ((208 . 140) (180 . 136) (174 . 174) (214 . 168)) :fill "#9F1239" :stroke "#0F172A" :stroke-width 2)
+           (poly ((66 . 136) (96 . 148) (96 . 170) (64 . 158)) :fill "#F43F5E" :stroke "#0F172A" :stroke-width 2)
+           (poly ((194 . 136) (164 . 148) (164 . 170) (196 . 158)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2)
+           (poly ((70 . 84) (95 . 54) (165 . 54) (190 . 84) (196 . 130) (64 . 130)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2.5)
+           (poly ((130 . 54) (165 . 54) (190 . 84) (196 . 130) (130 . 130)) :fill "#BE123C")
+           (poly ((68 . 98) (192 . 98) (188 . 126) (72 . 126)) :fill "#090D16" :stroke "#334155" :stroke-width 2)
+           (line 74 112 186 112 :stroke "#334155" :stroke-width 2)
+           (circle 130 112 13 :fill "#F43F5E")
+           (circle 130 112 8 :fill "#FDE047")
+           (line 110 112 150 112 :stroke "#FDE047" :stroke-width 2)
+           (line 130 96 130 128 :stroke "#FDE047" :stroke-width 2)
+           (poly ((96 . 126) (164 . 126) (152 . 182) (108 . 182)) :fill "#F43F5E" :stroke "#0F172A" :stroke-width 2)
+           (poly ((114 . 154) (146 . 154) (142 . 182) (118 . 182)) :fill "#1E293B" :stroke "#0F172A" :stroke-width 2)
+           (poly ((130 . 14) (142 . 58) (130 . 66) (118 . 58)) :fill "#F43F5E" :stroke "#0F172A" :stroke-width 2)))

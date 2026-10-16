@@ -1,0 +1,15 @@
+(:title "RX-93 ν高达 · 精神感应浮游炮矩阵"
+ :lore "牛高达不是装饰品！浮游炮矩阵环绕展开，象征你随时可调用的长期知识体系。"
+ :shapes
+ ((rect 18 28 18 190 :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 2)
+           (rect 42 38 18 180 :fill "#E2E8F0" :stroke "#0F172A" :stroke-width 2)
+           (rect 204 38 18 180 :fill "#E2E8F0" :stroke "#0F172A" :stroke-width 2)
+           (rect 228 28 18 190 :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 2)
+           (poly ((72 . 184) (188 . 184) (202 . 235) (58 . 235)) :fill "#1E293B" :stroke "#0F172A" :stroke-width 2)
+           (poly ((86 . 72) (130 . 56) (174 . 72) (180 . 158) (130 . 174) (80 . 158)) :fill "#F8FAFC" :stroke "#0F172A" :stroke-width 2.5)
+           (poly ((94 . 98) (166 . 98) (160 . 120) (98 . 120)) :fill "#0F172A")
+           (poly ((100 . 103) (124 . 106) (122 . 114) (102 . 112)) :fill "#4ADE80")
+           (poly ((160 . 103) (136 . 106) (138 . 114) (158 . 112)) :fill "#4ADE80")
+           (poly ((130 . 84) (70 . 30) (84 . 52) (122 . 88)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((130 . 84) (190 . 30) (176 . 52) (138 . 88)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((122 . 58) (138 . 58) (136 . 90) (124 . 90)) :fill "#E11D48" :stroke "#0F172A" :stroke-width 2)))

@@ -1,0 +1,10 @@
+(:title "暗月大剑 · 群星与月之誓约"
+ :lore "流淌着寒冽月光的传奇大剑。历经百日淬炼的知识，终将化作劈开迷雾的利刃。"
+ :shapes
+ ((circle 130 96 68 :fill "#0EA5E9" :opacity "0.18")
+           (poly ((130 . 14) (152 . 52) (148 . 162) (112 . 162) (108 . 52)) :fill "#38BDF8" :stroke "#E0F2FE" :stroke-width 2)
+           (poly ((130 . 14) (152 . 52) (148 . 162) (130 . 162)) :fill "#0284C7")
+           (line 130 24 130 160 :stroke "#E0F2FE" :stroke-width 2.5)
+           (poly ((72 . 160) (130 . 150) (188 . 160) (176 . 174) (130 . 168) (84 . 174)) :fill "#FACC15" :stroke "#0F172A" :stroke-width 2)
+           (poly ((122 . 168) (138 . 168) (136 . 216) (124 . 216)) :fill "#475569" :stroke "#0F172A" :stroke-width 2)
+           (circle 130 222 10 :fill "#38BDF8" :stroke "#FACC15" :stroke-width 2.5)))

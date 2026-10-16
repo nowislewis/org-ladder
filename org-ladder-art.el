@@ -12,7 +12,7 @@
 (declare-function svg-image "svg")
 
 (defcustom org-ladder-art-directory
-  (expand-file-name "org-ladder-arts" user-emacs-directory)
+  (expand-file-name "arts" (file-name-directory (or load-file-name buffer-file-name default-directory)))
   "Directory storing plain Lisp vector relic `.art' files (named YYYY-MM.art)."
   :type 'directory
   :group 'org-ladder)
