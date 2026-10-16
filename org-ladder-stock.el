@@ -256,6 +256,12 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                               (lambda (a b) (> (or (plist-get a :interval-days) 0)
                                                (or (plist-get b :interval-days) 0))))))))
 
+(defun org-ladder-stock--align-to (col)
+  "Insert spaces up to column COL with pixel-exact `:align-to' display property."
+  (let ((pad (max 1 (- col (current-column)))))
+    (insert (propertize (make-string pad ?\s)
+                        'display `(space :align-to ,col)))))
+
 (defun org-ladder-stock--insert-overview (sum)
   "Insert the clickable Forest and Monster overview blocks for SUM."
   (insert (propertize (format "📚 知识森林 · 共 %d 棵树 (已排期 %d · 待萌发 %d)\n"
@@ -270,14 +276,19 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
              (len   (if (= count 0) 0 (max 1 (round (* 24 (/ (float count) max-c))))))
              (bar   (make-string len ?█))
              (btn   (org-ladder-stock--tree-button
-                     (format "%-8s" (org-ladder-stock-stage-display name))
+                     (org-ladder-stock-stage-display name)
                      (concat "@" (symbol-name name)))))
-        (insert (format "  %s %4d  %s\n"
-                        btn count (propertize bar 'face '(:foreground "#66D9EF")))))))
+        (insert "  " btn)
+        (org-ladder-stock--align-to 12)
+        (insert (format "%4d" count))
+        (org-ladder-stock--align-to 18)
+        (insert (propertize bar 'face '(:foreground "#66D9EF")) "\n"))))
   (when-let* ((deep (plist-get sum :deepest)))
-    (insert (format "  最远   %dd  %s\n"
-                    (plist-get deep :interval-days)
-                    (org-ladder-stock--title-button deep))))
+    (insert "  最远")
+    (org-ladder-stock--align-to 12)
+    (insert (format "%3dd" (plist-get deep :interval-days)))
+    (org-ladder-stock--align-to 18)
+    (insert (org-ladder-stock--title-button deep) "\n"))
   (let* ((monsters (plist-get sum :monsters))
          (live-tot (apply #'+ (mapcar #'cadr monsters)))
          (slain-tot (apply #'+ (mapcar #'caddr monsters)))
@@ -291,12 +302,15 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                    (len (if (= live 0) 0 (max 1 (round (* 20 (/ (float live) max-m))))))
                    (bar (make-string len ?█))
                    (btn (org-ladder-stock--tree-button
-                         (format "%-8s" (org-ladder-stock-monster-display name))
+                         (org-ladder-stock-monster-display name)
                          (concat "@" (symbol-name name)))))
-        (insert (format "  %s %4d  %-20s (已斩 %d)\n"
-                        btn live
-                        (propertize bar 'face '(:foreground "#F92672"))
-                        slain)))))
+        (insert "  " btn)
+        (org-ladder-stock--align-to 12)
+        (insert (format "%4d" live))
+        (org-ladder-stock--align-to 18)
+        (insert (propertize bar 'face '(:foreground "#F92672")))
+        (org-ladder-stock--align-to 40)
+        (insert (format "(已斩 %d)\n" slain)))))
   (insert "\n"))
 
 (defun org-ladder-stock-insert-section (&optional cards top-n)
