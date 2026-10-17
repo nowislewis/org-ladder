@@ -273,8 +273,8 @@ accumulated during an `org-sm' review session.")
                       slain (or (plist-get event :ledger-left) 0))
             "🏆 Boss 讨伐 +1")
         (if-let* ((dis (plist-get event :ledger-dismissed)))
-            (format "已筛选 +1 (共 %d)" dis)
-          "已筛选")))
+            (format "已归档 +1 (共 %d)" dis)
+          "已归档")))
      (gain
       (if (and old (> old 0))
           (format "%dd → %dd  %s" old new gain)
@@ -307,7 +307,7 @@ accumulated during an `org-sm' review session.")
         "🔥 篝火小憩 · 随时停下，进度已保存"
       (let (parts)
         (when (> rev 0)   (push (format "复习 %d" rev) parts))
-        (when (> dis 0)   (push (format "已筛选 %d" dis) parts))
+        (when (> dis 0)   (push (format "已归档 %d" dis) parts))
         (when (> slain 0) (push (format "击败 Boss %d" slain) parts))
         (concat
          (format "🔥 篝火小结 · 本次处理 %d 张（%s）"

@@ -91,17 +91,22 @@
           (ev-same    (list :action 'cloze :card cloze-card
                             :rating :good :old-days 42 :new-days 65 :session t))
           (ev-kill    (list :action 'dismiss :card boss-wounded
-                            :old-days 30 :session t)))
+                            :old-days 30 :session t))
+          (ev-archive (list :action 'dismiss :card cloze-card
+                            :old-days 10 :session t)))
       (org-ladder-sm--on-review-event ev-promote)
       (org-ladder-sm--on-review-event ev-kill)
+      (org-ladder-sm--on-review-event ev-archive)
       (should (equal (org-ladder-sm-feedback ev-promote)
                      "25d → 42d  🌲 常青 +1 (共 53)"))
       (should (equal (org-ladder-sm-feedback ev-same)
                      "42d → 65d"))
       (should (equal (org-ladder-sm-feedback ev-kill)
                      "🏆 Boss 讨伐 +1 (累计 68 · 剩 47)"))
+      (should (equal (org-ladder-sm-feedback ev-archive)
+                     "已归档 +1 (共 127)"))
       (should (equal (org-ladder-sm-bonfire-text)
-                     "🔥 篝火小结 · 本次处理 2 张（复习 1 · 击败 Boss 1） · 升阶 🌲 常青 +1 (共 53)")))))
+                     "🔥 篝火小结 · 本次处理 3 张（复习 1 · 已归档 1 · 击败 Boss 1） · 升阶 🌲 常青 +1 (共 53)")))))
 
 (ert-deftest org-ladder-sm-session-isolation-and-cache-invalidation ()
   (let ((org-ladder-sm--session-stats nil)
