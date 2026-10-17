@@ -254,7 +254,10 @@ Cached for 5 minutes; pass FORCE to bypass."
 \\[org-sm-review-start-light] starts a 6-card random expedition,
 \\[org-sm-review-start] reviews all due cards, \\[org-sm-tree] opens the
 card tree, and \\[forward-button] cycles through stage/monster buttons."
-  (setq-local revert-buffer-function
+  (setq-local header-line-format
+              (substitute-command-keys
+               " \\[org-sm-review-start-light] 随机远征  \\[org-sm-review-start] 全量出征  \\[org-sm-tree] 选怪树图  \\[forward-button] 跳按钮  \\[revert-buffer] 刷新  \\[quit-window] 退出")
+              revert-buffer-function
               (lambda (_ignore-auto _noconfirm)
                 (setq org-ladder--cache nil
                       org-ladder--daily-cache nil
@@ -291,13 +294,16 @@ With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
             (insert (propertize (format "🔥 %s\n" quote)
                                 'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
             (insert "  "
-                    (buttonize "[🎲 随机远征 6 张 (s)]"
+                    (buttonize (substitute-command-keys
+                                "[🎲 随机远征 6 张 (\\[org-sm-review-start-light])]")
                                (lambda (_) (require 'org-sm) (org-sm-review-start-light)))
                     "   "
-                    (buttonize "[⚔️ 全量出征 (S)]"
+                    (buttonize (substitute-command-keys
+                                "[⚔️ 全量出征 (\\[org-sm-review-start])]")
                                (lambda (_) (require 'org-sm) (org-sm-review-start)))
                     "   "
-                    (buttonize "[🗺️ 选怪树图 (l)]"
+                    (buttonize (substitute-command-keys
+                                "[🗺️ 选怪树图 (\\[org-sm-tree])]")
                                (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
                     "\n")
             (insert (propertize "────────────────────────────────────────────────────────\n\n"

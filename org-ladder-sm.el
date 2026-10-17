@@ -210,10 +210,14 @@ accumulated during an `org-sm' review session.")
          (title   (format "%s   %s"
                           (string-join (delq nil (list ban cstate)) " · ")
                           pos))
-         (body    (and prev (format "✓ %s" prev))))
-    (when-let* ((fallback (org-ladder-notify body :title title
-                                             :hidehandler #'org-ladder-sm--hud-hide-p)))
-      (message "%s" (replace-regexp-in-string "\n" "  |  " fallback)))))
+         (body    (and prev (format "✓ %s" prev)))
+         (keys    (and (fboundp 'org-sm-review-keys-hint)
+                       (org-sm-review-keys-hint))))
+    (if-let* ((fallback (org-ladder-notify body :title title
+                                           :hidehandler #'org-ladder-sm--hud-hide-p)))
+        (message "%s%s" (replace-regexp-in-string "\n" "  |  " fallback)
+                 (if keys (concat "  |  " keys) ""))
+      (when keys (message "%s" keys)))))
 
 (defun org-ladder-sm--on-card-change (event)
   "Invalidate derived score caches and refresh active HUD on child extraction."
