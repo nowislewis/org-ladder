@@ -37,23 +37,9 @@
 
 (defcustom org-ladder-score-sources nil
   "List of zero-argument functions, each returning ((TIME-KEY . SCORE) ...).
-TIME-KEY is produced by `org-ladder-time-key-day', `-month', or `-week'.
-All scores are aggregated to month granularity before tier calculation."
+TIME-KEY is produced by `org-ladder-time-key-day', `-month', or `-week'."
   :type '(repeat function)
   :group 'org-ladder)
-
-;;; ── Tier configuration ───────────────────────────────────────────────────────
-
-(defconst org-ladder-tiers
-  '((bronze   .  (0    499  10  " Bronze"))
-    (silver   .  (500  1199 10  " Silver"))
-    (gold     .  (1200 2099 10  " Gold"))
-    (platinum .  (2100 3199 10  " Platinum"))
-    (diamond  .  (3200 4499 10  "󰫞 Diamond"))
-    (legend   .  (4500 nil  nil " Legend")))
-  "Alist of (NAME . (MIN MAX SUB-COUNT DISPLAY-NAME)).
-DISPLAY-NAME intentionally includes the icon as part of the rank name.
-Legend tier has no upper bound.")
 
 ;;; ── State ────────────────────────────────────────────────────────────────────
 
@@ -150,71 +136,10 @@ Cached for 5 minutes; pass FORCE to bypass."
                   (org-ladder-calculate-scores)))
       0))
 
-;;; ── Tier calculation ─────────────────────────────────────────────────────────
-
-(defun org-ladder-get-tier-info (score)
-  "Return (NAME SUB NSUBS TO-TIER TO-SUB PROGRESS SUB-SIZE) for SCORE."
-  (if (>= score 4500)
-      (list 'legend nil nil nil nil nil nil)
-    (catch 'found
-      (dolist (tc org-ladder-tiers)
-        (let* ((min   (nth 0 (cdr tc)))
-               (max   (nth 1 (cdr tc)))
-               (nsubs (nth 2 (cdr tc))))
-          (when (and max (>= score min) (<= score max))
-            (let* ((sub-sz   (/ (1+ (- max min)) nsubs))
-                   (progress (- score min))
-                   (sub      (min nsubs (1+ (/ progress sub-sz)))))
-              (throw 'found
-                (list (car tc) sub nsubs
-                      (- max score)
-                      (if (< sub nsubs) (- (* sub sub-sz) progress) (- max score))
-                      (- progress (* (1- sub) sub-sz))
-                      sub-sz))))))
-      (list 'bronze 1 10 500 50 0 50))))
-
-(defun org-ladder--insert-badge-shelf (all-scores)
-  "Insert permanent badge shelf from ALL-SCORES."
-  (insert (propertize "🏅 赛季徽章陈列 (永久保留)\n" 'face '(:weight bold :height 1.2)))
-  (let ((counts (make-hash-table :test 'eq))
-        (best   nil))
-    (dolist (entry all-scores)
-      (let* ((sc   (cdr entry))
-             (tier (car (org-ladder-get-tier-info sc))))
-        (puthash tier (1+ (gethash tier counts 0)) counts)
-        (when (or (null best) (> sc (cdr best)))
-          (setq best entry))))
-    (let (parts)
-      (dolist (tc (reverse org-ladder-tiers))
-        (let ((n (gethash (car tc) counts 0)))
-          (when (> n 0)
-            (push (format "%-12s ×%d" (nth 3 (cdr tc)) n) parts))))
-      (insert (if parts
-                  (format "  %s\n" (string-join (nreverse parts) "\n  "))
-                "  (暂无赛季记录)\n")))
-    (when best
-      (insert (format "  最高单月  %d-%02d · %d min (%s)\n"
-                      (caar best) (cadar best) (cdr best)
-                      (org-ladder--rank-name (cdr best)))))
-    (insert "\n")))
-
-;;; ── Display helpers ──────────────────────────────────────────────────────────
-
 (defun org-ladder--progress-bar (current total width)
   "Return a progress bar string of WIDTH chars for CURRENT/TOTAL."
   (let ((filled (max 0 (min width (round (* width (/ (float current) total)))))))
     (concat "[" (make-string filled ?█) (make-string (- width filled) ?░) "]")))
-
-(defun org-ladder--tier-display-name (name)
-  "Return display name for tier NAME, including its icon."
-  (or (nth 3 (cdr (assoc name org-ladder-tiers)))
-      (capitalize (symbol-name name))))
-
-(defun org-ladder--rank-name (score)
-  "Return a short rank string like \" Gold 6\" or \" Legend\" for SCORE."
-  (pcase-let ((`(,name ,sub) (org-ladder-get-tier-info score)))
-    (if (eq name 'legend) (org-ladder--tier-display-name name)
-      (format "%s %d" (org-ladder--tier-display-name name) sub))))
 
 ;;; ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -239,6 +164,8 @@ Cached for 5 minutes; pass FORCE to bypass."
 (declare-function org-sm-review-start-light "org-sm")
 (declare-function org-sm-review-start "org-sm")
 (declare-function org-sm-tree "org-sm")
+(declare-function org-ladder-sm--format-prev "org-ladder-sm")
+(defvar org-ladder-sm-last-log)
 
 (defvar org-ladder-mode-map
   (let ((map (make-sparse-keymap)))
@@ -269,152 +196,100 @@ card tree, and \\[forward-button] cycles through stage/monster buttons."
   "Show the Org Ladder Campfire Hub dashboard.
 With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
   (interactive "P")
-  (let* ((all-scores (org-ladder-calculate-scores))
-         (score      (org-ladder-current-score))
-         (info       (org-ladder-get-tier-info score))
-         (cur-ym     (org-ladder--month-key (current-time)))
-         (cur-year   (car cur-ym))
-         (cur-month  (cadr cur-ym))
-         (top-n      (cond ((null months) 0)
-                           ((listp months) 10)
-                           (t (prefix-numeric-value months))))
-         (history    (cond ((null months)  (seq-take all-scores 12))
-                           ((listp months) all-scores)
-                           (t              (seq-take all-scores months))))
-         (daily-tbl  (org-ladder--collect-daily)))
-    (pcase-let ((`(,name ,sub ,nsubs ,_to-t ,_to-s ,_prog ,_tot) info))
-      (with-current-buffer (get-buffer-create "*Org Ladder*")
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          (unless (derived-mode-p 'org-ladder-mode)
-            (org-ladder-mode))
+  (let* ((cur-ym    (org-ladder--month-key (current-time)))
+         (cur-year  (car cur-ym))
+         (cur-month (cadr cur-ym))
+         (top-n     (cond ((null months) 0)
+                          ((listp months) 10)
+                          (t (prefix-numeric-value months))))
+         (daily-tbl (org-ladder--collect-daily)))
+    (with-current-buffer (get-buffer-create "*Org Ladder*")
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (unless (derived-mode-p 'org-ladder-mode)
+          (org-ladder-mode))
 
-          (let ((quote (nth (random (length org-ladder-status-quotes))
-                            org-ladder-status-quotes)))
-            (insert (propertize (format "🔥 %s\n" quote)
-                                'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
-            (insert "  "
-                    (buttonize (substitute-command-keys
-                                "[🎲 随机远征 6 张 (\\[org-sm-review-start-light])]")
-                               (lambda (_) (require 'org-sm) (org-sm-review-start-light)))
-                    "   "
-                    (buttonize (substitute-command-keys
-                                "[⚔️ 全量出征 (\\[org-sm-review-start])]")
-                               (lambda (_) (require 'org-sm) (org-sm-review-start)))
-                    "   "
-                    (buttonize (substitute-command-keys
-                                "[🗺️ 选怪树图 (\\[org-sm-tree])]")
-                               (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
-                    "\n")
-            (insert (propertize "────────────────────────────────────────────────────────\n\n"
-                                'face '(:foreground "#444444"))))
+        (let ((quote (nth (random (length org-ladder-status-quotes))
+                          org-ladder-status-quotes)))
+          (insert (propertize (format "🔥 %s\n" quote)
+                              'face '(:weight bold :height 1.3 :foreground "#A6E22E")))
+          (insert "  "
+                  (buttonize (substitute-command-keys
+                              "[🎲 随机远征 6 张 (\\[org-sm-review-start-light])]")
+                             (lambda (_) (require 'org-sm) (org-sm-review-start-light)))
+                  "   "
+                  (buttonize (substitute-command-keys
+                              "[⚔️ 全量出征 (\\[org-sm-review-start])]")
+                             (lambda (_) (require 'org-sm) (org-sm-review-start)))
+                  "   "
+                  (buttonize (substitute-command-keys
+                              "[🗺️ 选怪树图 (\\[org-sm-tree])]")
+                             (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
+                  "\n")
+          (insert (propertize "────────────────────────────────────────────────────────\n\n"
+                              'face '(:foreground "#444444"))))
 
-          ;; ── Permanent stock (first screen, never resets) ───────────────
-          (require 'org-ladder-stock nil t)
-          (when (fboundp 'org-ladder-stock-insert-section)
-            (org-ladder-stock-insert-section nil top-n))
+        ;; ── Last session review log ────────────────────────────────────
+        (when-let* ((log (bound-and-true-p org-ladder-sm-last-log)))
+          (insert (propertize (format "🔥 上次战报 (%d 张)\n" (length log))
+                              'face '(:weight bold :height 1.2)))
+          (dolist (line log)
+            (let ((s (if (fboundp 'org-ladder-sm--format-prev)
+                         (org-ladder-sm--format-prev line)
+                       line)))
+              (insert "  "
+                      (replace-regexp-in-string
+                       " · \\([^·]+\\)\\'"
+                       (concat (propertize "  " 'display '(space :align-to 28)) "\\1")
+                       s t)
+                      "\n")))
+          (insert "\n"))
 
-          ;; ── Artifact progress (unlocked by cumulative score) ───────────
-          (require 'org-ladder-art nil t)
-          (insert (propertize "🏺 Artifact (累计解锁)\n" 'face '(:weight bold :height 1.2)))
-          (if (fboundp 'org-ladder-art-insert-current)
-              (org-ladder-art-insert-current
-               (gethash (org-ladder-time-today) daily-tbl 0))
-            (insert "  artifact module not loaded.\n\n"))
+        ;; ── Permanent stock & chronicle ────────────────────────────────
+        (require 'org-ladder-stock nil t)
+        (when (fboundp 'org-ladder-stock-insert-section)
+          (org-ladder-stock-insert-section nil top-n))
 
-          ;; ── Permanent badge shelf ──────────────────────────────────────
-          (org-ladder--insert-badge-shelf all-scores)
+        ;; ── Artifact progress (unlocked by cumulative score) ───────────
+        (require 'org-ladder-art nil t)
+        (insert (propertize "🏺 Artifact (累计解锁)\n" 'face '(:weight bold :height 1.2)))
+        (if (fboundp 'org-ladder-art-insert-current)
+            (org-ladder-art-insert-current
+             (gethash (org-ladder-time-today) daily-tbl 0))
+          (insert "  artifact module not loaded.\n\n"))
 
-          ;; ── GitHub style 14-day heatmap ────────────────────────────────
-          (insert (propertize "🔥 Activity\n" 'face '(:weight bold :height 1.2)))
-          (let* ((today-time (current-time))
-                 (streak 0)
-                 (best-day 0))
-            ;; streak: if today is empty, yesterday can still be the active streak
-            (let ((offset (if (> (gethash (org-ladder-time-from-emacs today-time) daily-tbl 0) 0) 0 1)))
-              (catch 'done
-                (dotimes (i 30)
-                  (let* ((t-day (time-subtract today-time (seconds-to-time (* (+ i offset) 86400))))
-                         (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0)))
-                    (if (> sc 0)
-                        (setq streak (1+ streak))
-                      (throw 'done t))))))
-            ;; best day in current month
-            (dotimes (i (nth 3 (decode-time today-time)))
-              (setq best-day (max best-day
-                                  (gethash (list cur-year cur-month (1+ i)) daily-tbl 0))))
-            ;; 14-day green squares, two rows of seven days
-            (insert "  ")
-            (cl-loop for i from 13 downto 0 do
-                     (let* ((t-day (time-subtract today-time (seconds-to-time (* i 86400))))
-                            (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0))
-                            (color (cond ((= sc 0)   "#30363D")
-                                         ((< sc 30)  "#0E4429")
-                                         ((< sc 90)  "#006D32")
-                                         ((< sc 180) "#26A641")
-                                         (t          "#39D353"))))
-                       (insert (propertize "■ " 'face `(:foreground ,color))))
-                     (when (= i 7) (insert "\n  ")))
-            (insert (format "\n  streak: %d days    best day: %d min\n\n" streak best-day)))
+        ;; ── GitHub style 14-day heatmap ────────────────────────────────
+        (insert (propertize "🔥 Activity\n" 'face '(:weight bold :height 1.2)))
+        (let* ((today-time (current-time))
+               (streak 0)
+               (best-day 0))
+          (let ((offset (if (> (gethash (org-ladder-time-from-emacs today-time) daily-tbl 0) 0) 0 1)))
+            (catch 'done
+              (dotimes (i 30)
+                (let* ((t-day (time-subtract today-time (seconds-to-time (* (+ i offset) 86400))))
+                       (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0)))
+                  (if (> sc 0)
+                      (setq streak (1+ streak))
+                    (throw 'done t))))))
+          (dotimes (i (nth 3 (decode-time today-time)))
+            (setq best-day (max best-day
+                                (gethash (list cur-year cur-month (1+ i)) daily-tbl 0))))
+          (insert "  ")
+          (cl-loop for i from 13 downto 0 do
+                   (let* ((t-day (time-subtract today-time (seconds-to-time (* i 86400))))
+                          (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0))
+                          (color (cond ((= sc 0)   "#30363D")
+                                       ((< sc 30)  "#0E4429")
+                                       ((< sc 90)  "#006D32")
+                                       ((< sc 180) "#26A641")
+                                       (t          "#39D353"))))
+                     (insert (propertize "■ " 'face `(:foreground ,color))))
+                   (when (= i 7) (insert "\n  ")))
+          (insert (format "\n  streak: %d days    best day: %d min\n" streak best-day)))
 
-          ;; ── Tier / projection (decorative season layer) ────────────────
-          (insert (propertize "📈 Season (本月装饰)\n" 'face '(:weight bold :height 1.2)))
-          (let* ((day-now     (nth 3 (decode-time (current-time))))
-                 (days-total  (calendar-last-day-of-month cur-month cur-year))
-                 (avg-daily   (if (> day-now 0) (/ (float score) day-now) 0))
-                 (eom-score   (round (* avg-daily days-total)))
-                 (eom-rank    (org-ladder--rank-name eom-score))
-                 (today-score (gethash (org-ladder-time-today) daily-tbl 0))
-                 (today-thresholds '((0 . "💤 待机中")
-                                     (15 . "✨ 火花点燃")
-                                     (30 . "🔥 系统预热")
-                                     (60 . "🚀 引擎启动")
-                                     (90 . "🎯 锁定目标")
-                                     (120 . "🧠 进入航道")
-                                     (180 . "🌊 深潜作业")
-                                     (240 . "⚡ 推进过载")
-                                     (360 . "🦸 英雄模式")
-                                     (480 . "🏆 传说降临")
-                                     (600 . "🌌 神话升格")))
-                 (today-state (catch 'state
-                                (let ((prev (cdar today-thresholds)))
-                                  (dolist (entry (cdr today-thresholds) prev)
-                                    (when (< today-score (car entry))
-                                      (throw 'state prev))
-                                    (setq prev (cdr entry))))))
-                 (today-next-entry (catch 'next
-                                     (dolist (entry today-thresholds nil)
-                                       (when (> (car entry) today-score)
-                                         (throw 'next entry)))))
-                 (today-next (or (car-safe today-next-entry) 999999))
-                 (today-next-state (cdr-safe today-next-entry))
-                 (today-remaining (and today-next-state (- today-next today-score)))
-                 (today-bar (if today-next-state
-                                (org-ladder--progress-bar today-score today-next 10)
-                              (org-ladder--progress-bar 1 1 10))))
-            (insert (format "  TODAY   %d min · %s\n" today-score today-state))
-            (insert (if today-next-state
-                        (format "  NEXT    %s %d min to %s\n\n"
-                                today-bar today-remaining today-next-state)
-                      (format "  NEXT    %s max stage reached\n\n" today-bar)))
-            (insert (format "  SEASON  %s %s · %d min\n"
-                            (org-ladder--tier-display-name name)
-                            (if (eq name 'legend) "" (format "%d/%d" sub nsubs))
-                            score))
-            (insert (format "  TRACK   %.0f/day → %s\n\n" avg-daily eom-rank)))
-
-          ;; ── History ────────────────────────────────────────────────────
-          (insert (propertize "📅 History\n" 'face '(:weight bold :height 1.2)))
-          (insert "  Month    Score   Rank\n")
-          (insert "  ─────────────────────────\n")
-          (dolist (entry history)
-            (let ((ym (car entry)) (sc (cdr entry)))
-              (insert (format "  %d-%02d  %5d   %s\n"
-                              (car ym) (cadr ym) sc (org-ladder--rank-name sc)))))
-
-          (goto-char (point-min))
-          (setq buffer-read-only t))
-        (display-buffer (current-buffer))))))
+        (goto-char (point-min))
+        (setq buffer-read-only t))
+      (display-buffer (current-buffer)))))
 
 ;;; ── Load default source ──────────────────────────────────────────────────────
 

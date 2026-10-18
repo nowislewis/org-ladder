@@ -350,7 +350,68 @@ When TOP-N is positive, also list the TOP-N deepest Clozes and oldest Monsters."
                                   (format "[削血 %dT/%dC]" ct cc)
                                 "[0子卡]")
                               (org-ladder-stock--title-button b))))))
-        (insert "\n")))))
+        (insert "\n"))
+      (org-ladder-stock-insert-chronicle cards))))
+
+(defun org-ladder-stock--period-lines (cards pred)
+  "Return per-level Cloze gain and Monster kill lines for CARDS matching PRED."
+  (let ((st (make-hash-table :test 'eq))
+        (sl (make-hash-table :test 'eq))
+        lines)
+    (dolist (c cards)
+      (when-let* ((d (plist-get c :date)))
+        (when (funcall pred d)
+          (cond ((and (eq (plist-get c :type) 'cloze)
+                      (not (plist-get c :dismissed))
+                      (plist-get c :stage))
+                 (let ((s (plist-get c :stage)))
+                   (puthash s (1+ (gethash s st 0)) st)))
+                ((and (eq (plist-get c :type) 'topic)
+                      (plist-get c :dismissed))
+                 (let ((m (or (plist-get c :monster)
+                              (org-ladder-stock-monster (plist-get c :reviews)))))
+                   (puthash m (1+ (gethash m sl 0)) sl)))))))
+    (dolist (m org-ladder-stock-monsters)
+      (let ((n (gethash (car m) sl 0)))
+        (when (> n 0)
+          (push (format "%s  斩 %d" (nth 2 (cdr m)) n) lines))))
+    (dolist (s org-ladder-stock-stages)
+      (let ((n (gethash (car s) st 0)))
+        (when (> n 0)
+          (push (format "%s  +%d" (nth 2 (cdr s)) n) lines))))
+    lines))
+
+(defun org-ladder-stock--insert-period (title lines)
+  "Insert chronicle section TITLE followed by indented LINES."
+  (when lines
+    (insert (propertize (format "  %s\n" title) 'face 'bold))
+    (dolist (l lines)
+      (insert (format "    %s\n" l)))))
+
+(defun org-ladder-stock-insert-chronicle (cards)
+  "Insert Today, This Week, and Monthly Forest/Monster growth chronicle for CARDS."
+  (let* ((now      (current-time))
+         (today    (format-time-string "%F" now))
+         (week-ago (format-time-string "%F" (time-subtract now (days-to-time 6))))
+         (yms      (seq-take
+                    (sort (seq-uniq
+                           (delq nil (mapcar (lambda (c)
+                                               (when-let* ((d (plist-get c :date)))
+                                                 (substring d 0 7)))
+                                             cards)))
+                          #'string>)
+                    12)))
+    (insert (propertize "📅 成长与讨伐编年史\n" 'face '(:weight bold :height 1.2)))
+    (org-ladder-stock--insert-period
+     "今日" (org-ladder-stock--period-lines cards (lambda (d) (equal d today))))
+    (org-ladder-stock--insert-period
+     "近7天" (org-ladder-stock--period-lines
+              cards (lambda (d) (not (string< d week-ago)))))
+    (dolist (ym yms)
+      (org-ladder-stock--insert-period
+       ym (org-ladder-stock--period-lines
+           cards (lambda (d) (string-prefix-p ym d)))))
+    (insert "\n")))
 
 (provide 'org-ladder-stock)
 ;;; org-ladder-stock.el ends here

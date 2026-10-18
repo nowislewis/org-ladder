@@ -47,17 +47,23 @@
 (defun org-ladder-notify-format (&optional body title)
   "Format TITLE and BODY into a propertized notification string."
   (let ((t-str (and title (not (string-empty-p title))
-                    (propertize title 'face 'org-ladder-notify-title-face)))
+                    (let ((s (copy-sequence title)))
+                      (add-face-text-property
+                       0 (length s) 'org-ladder-notify-title-face t s)
+                      s)))
         (b-str (and body (not (string-empty-p body))
-                    (propertize body 'face 'org-ladder-notify-body-face))))
+                    (let ((s (copy-sequence body)))
+                      (add-face-text-property
+                       0 (length s) 'org-ladder-notify-body-face t s)
+                      s))))
     (string-join (delq nil (list t-str b-str)) "\n")))
 
 ;;;###autoload
-(cl-defun org-ladder-notify (body &key title timeout hidehandler (buffer org-ladder-notify-buffer))
+(cl-defun org-ladder-notify (body &key title timeout (buffer org-ladder-notify-buffer))
   "Show a bottom-right notification with optional TITLE, BODY, and TIMEOUT.
-When TIMEOUT is nil, the popup remains visible until replaced, hidden by
-HIDEHANDLER, or closed via `org-ladder-notify-close'.  Returns nil when shown
-in a graphical posframe, or the plain formatted string in non-graphical mode."
+When TIMEOUT is nil, the popup remains visible until replaced or closed
+via `org-ladder-notify-close'.  Returns nil when shown in a graphical
+posframe, or the plain formatted string in non-graphical mode."
   (let ((text (org-ladder-notify-format body title)))
     (setq org-ladder-notify-last-text (substring-no-properties text))
     (if (and (display-graphic-p)
@@ -75,8 +81,7 @@ in a graphical posframe, or the plain formatted string in non-graphical mode."
                          :internal-border-color (or (face-foreground 'shadow nil t) "#555555")
                          :background-color (face-background 'default nil t)
                          :foreground-color (face-foreground 'default nil t)
-                         :timeout timeout
-                         :hidehandler hidehandler)
+                         :timeout timeout)
           nil)
       org-ladder-notify-last-text)))
 
