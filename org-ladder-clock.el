@@ -25,6 +25,7 @@
 ;;; Code:
 
 (require 'org)
+(require 'org-ladder)
 
 (defgroup org-ladder-clock nil
   "org-clock/effort source for org-ladder."
@@ -59,10 +60,10 @@
 Keys in TBL are day time keys; values are accumulated minute scores.
 Supports progressive clocking: logged CLOCK time is credited to the day
 it occurred, even if the task is not yet completed."
-  (with-temp-buffer
-    (insert-file-contents file)
-    (goto-char (point-min))
-    (while (re-search-forward "^\\*+ " nil t)
+  (org-ladder-call-with-file
+   file
+   (lambda ()
+     (while (re-search-forward "^\\*+ " nil t)
       (let* ((heading-beg (line-beginning-position))
              (heading-end (org-ladder-clock--next-heading-pos heading-beg))
              effort-min habitp)
@@ -133,7 +134,7 @@ it occurred, even if the task is not yet completed."
                      (target (max (or effort-min 0) org-ladder-clock-default-duration))
                      (bonus (if (> target total-clock) (- target total-clock) 0)))
                 (when (> bonus 0)
-                  (puthash closed-key (+ (gethash closed-key tbl 0) bonus) tbl))))))))))
+                  (puthash closed-key (+ (gethash closed-key tbl 0) bonus) tbl)))))))))))
 
 ;;; ── Source function ──────────────────────────────────────────────────────────
 

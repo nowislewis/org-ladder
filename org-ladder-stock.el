@@ -180,14 +180,12 @@ result is cheap and must never lag behind a review."
 (defun org-ladder-stock-summary (&optional cards)
   "Return a summary plist of the permanent Cloze forest and Topic Boss pipeline.
 CARDS defaults to `org-ladder-stock-cards'.  Keys:
+  :trees         number of live Cloze cards
   :stages        alist of (STAGE-NAME . COUNT), scheduled Cloze cards only
+  :monsters      list of (MONSTER-NAME LIVE-COUNT SLAIN-COUNT)
   :scheduled     number of live scheduled Cloze cards
   :unscheduled   live Cloze cards with no interval yet
-  :dismissed     count of screened non-Boss cards (positive processing count)
-  :boss-slain    count of dismissed Boss topics (reviews >= threshold)
-  :boss-active   count of live Boss topics (including wounded)
   :boss-wounded  count of live Boss topics that already have child cards
-  :topic-pool    count of live non-Boss topics in the reading pool
   :bosses        live Boss card plists sorted by review count descending
   :total         every card seen
   :deepest       the live Cloze card with the largest interval, or nil"
@@ -198,27 +196,13 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                          (not (plist-get c :dismissed))))
                   cards))
          (sched (cl-remove-if-not (lambda (c) (plist-get c :interval-days)) clozes))
-         (live-bosses (cl-remove-if-not
-                       (lambda (c)
-                         (memq (plist-get c :boss-state) '(active wounded)))
-                       cards))
-         (wounded-bosses (cl-remove-if-not
-                          (lambda (c) (eq (plist-get c :boss-state) 'wounded))
-                          live-bosses))
-         (slain-bosses (cl-remove-if-not
-                        (lambda (c) (eq (plist-get c :boss-state) 'slain))
-                        cards))
-         (topic-pool (cl-remove-if-not
-                      (lambda (c)
-                        (and (eq (plist-get c :type) 'topic)
-                             (not (plist-get c :dismissed))
-                             (null (plist-get c :boss-state))))
-                      cards))
-         (screened (cl-remove-if-not
-                    (lambda (c)
-                      (and (plist-get c :dismissed)
-                           (not (eq (plist-get c :boss-state) 'slain))))
-                    cards))
+         (bosses (cl-remove-if-not
+                  (lambda (c)
+                    (memq (plist-get c :boss-state) '(active wounded)))
+                  cards))
+         (wounded (cl-count-if
+                   (lambda (c) (eq (plist-get c :boss-state) 'wounded))
+                   bosses))
          (counts (make-hash-table :test 'eq))
          (m-live (make-hash-table :test 'eq))
          (m-slain (make-hash-table :test 'eq)))
@@ -242,12 +226,8 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                             org-ladder-stock-monsters)
           :scheduled (length sched)
           :unscheduled (- (length clozes) (length sched))
-          :dismissed (length screened)
-          :boss-slain (length slain-bosses)
-          :boss-active (length live-bosses)
-          :boss-wounded (length wounded-bosses)
-          :topic-pool (length topic-pool)
-          :bosses (sort (copy-sequence live-bosses)
+          :boss-wounded wounded
+          :bosses (sort (copy-sequence bosses)
                         (lambda (a b)
                           (> (or (plist-get a :reviews) 0)
                              (or (plist-get b :reviews) 0))))

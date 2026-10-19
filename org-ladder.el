@@ -52,7 +52,22 @@ TIME-KEY is produced by `org-ladder-time-key-day', `-month', or `-week'."
 (defvar org-ladder--cache-time nil
   "Emacs time of last cache computation.")
 
-;;; ── Time key API ─────────────────────────────────────────────────────────────
+;;; ── Time key & file helpers ──────────────────────────────────────────────────
+
+(defun org-ladder-call-with-file (file fn)
+  "Call FN at `point-min' of FILE's widened visiting buffer or a temp buffer."
+  (if-let* ((buf (get-file-buffer file)))
+      (with-current-buffer buf
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (funcall fn))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (goto-char (point-min))
+      (funcall fn))))
+
 (defun org-ladder-hash-to-alist (tbl)
   "Convert hash-table TBL to an alist of (KEY . VALUE)."
   (let (result)
@@ -291,10 +306,11 @@ With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
         (setq buffer-read-only t))
       (display-buffer (current-buffer)))))
 
-;;; ── Load default source ──────────────────────────────────────────────────────
+(provide 'org-ladder)
+
+;;; ── Load default sources ─────────────────────────────────────────────────────
 
 (require 'org-ladder-clock)
 (require 'org-ladder-stock)
 
-(provide 'org-ladder)
 ;;; org-ladder.el ends here

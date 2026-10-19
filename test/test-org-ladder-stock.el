@@ -54,10 +54,10 @@
           (should (= (cdr (assq 'evergreen (plist-get sum :stages))) 1))
           (should (= (cdr (assq 'seedling (plist-get sum :stages))) 0))
           ;; Boss pipeline stats:
-          (should (= (plist-get sum :boss-active) 2))
+          (should (= (length (plist-get sum :bosses)) 2))
           (should (= (plist-get sum :boss-wounded) 1))
-          (should (= (plist-get sum :boss-slain) 1))
-          (should (= (plist-get sum :topic-pool) 1))
+          (should (equal (plist-get sum :monsters)
+                         '((mob 1 0) (elite 0 0) (boss 2 1) (demon 0 0))))
           (should (equal (org-ladder-stock--period-lines
                           cards (lambda (d) (string-prefix-p "2026-10" d)))
                          '("🌲 常青  +1" "⚔️ 首领  斩 1"))))
@@ -66,13 +66,6 @@
 (ert-deftest org-ladder-sm-boss-banner-kill-and-bonfire ()
   "Verify Boss banner, Boss kill feedback, Cloze stage promotion, and bonfire."
   (org-ladder-sm--reset-session)
-  (setq org-ladder-sm--stock-snapshot
-        (list :stages (list (cons 'seedling 8) (cons 'plant 16)
-                            (cons 'evergreen 52) (cons 'ancient 37)
-                            (cons 'elder 6))
-              :scheduled 119 :unscheduled 31 :dismissed 126
-              :boss-slain 67 :boss-active 48 :boss-wounded 0
-              :topic-pool 202 :total 500))
   (let ((boss-unextracted '(:type topic :title "T1" :reviews 11
                             :child-topics 0 :child-clozes 0))
         (boss-wounded     '(:type topic :title "T2" :reviews 8
@@ -104,12 +97,8 @@
                             :old-days 30 :session t))
           (ev-archive (list :action 'dismiss :card cloze-card
                             :old-days 10 :session t)))
-      (org-ladder-sm--on-review-event ev-promote)
-      (org-ladder-sm--on-review-event ev-mob)
-      (org-ladder-sm--on-review-event ev-kill)
-      (org-ladder-sm--on-review-event ev-archive)
       (should (equal (org-ladder-sm-feedback ev-promote)
-                     "🌲 常青 +1 (共 53) · 25d → 42d"))
+                     "🌿 成株 → 🌲 常青 · 25d → 42d"))
       (should (equal (org-ladder-sm-feedback ev-same)
                      "🌲 常青 · 42d → 65d"))
       (should (equal (org-ladder-sm-feedback ev-again)
@@ -117,18 +106,16 @@
       (should (equal (org-ladder-sm-feedback ev-topic)
                      "🛡️ 精英 → ⚔️ 首领 · 6d → 9d"))
       (should (equal (org-ladder-sm-feedback ev-mob)
-                     "🏆 击败 🛡️ 精英 · 累计 127 · 剩 201"))
+                     "🏆 击败 🛡️ 精英 · 3次"))
       (should (equal (org-ladder-sm-feedback ev-kill)
-                     "🏆 击败 👹 魔王 · 累计 68 · 剩 47"))
+                     "🏆 击败 👹 魔王 · 8次"))
       (should (equal (org-ladder-sm-feedback ev-archive)
-                     "🌿 成株 · 已归档 (共 128)")))))
+                     "🌿 成株 · 已归档")))))
 
 (ert-deftest org-ladder-sm-session-isolation-and-cache-invalidation ()
   (let ((org-ladder--cache '(stale))
         (org-ladder--cache-time t))
     (org-ladder-sm--reset-session)
-    (org-ladder-sm--on-review-event '(:action topic))
-    (org-ladder-sm--on-review-event '(:action postpone :session t))
     (org-ladder-sm--on-card-change '(:action extract))
     (should-not org-ladder--cache)
     (should-not org-ladder--cache-time)))
@@ -137,6 +124,8 @@
   "Exercise review presentation, grading and stopping on disposable cards."
   (require 'org-sm)
   (let ((buffer (generate-new-buffer " *org-sm-flow*"))
+        (org-ladder-stock-files nil)
+        (org-ladder-sm-files nil)
         (org-sm--queue nil)
         (org-sm--current-buffer nil)
         (org-sm--current-card-marker nil)
@@ -144,7 +133,6 @@
         (org-sm-feedback-function #'org-ladder-sm-feedback)
         (org-sm-finish-function #'org-ladder-sm-bonfire)
         (org-sm-review-start-hook '(org-ladder-sm--reset-session))
-        (org-sm-after-review-functions '(org-ladder-sm--on-review-event))
         (org-sm-after-card-change-functions '(org-ladder-sm--on-card-change)))
     (unwind-protect
         (save-window-excursion
@@ -171,17 +159,17 @@
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
                 (should (equal org-ladder-notify-last-text
-                               "✓ 🏆 击败 ⚔️ 首领 · 累计 1 · 剩 0\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
+                               "✓ 🏆 击败 ⚔️ 首领 · 5次\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
                 (should (equal org-ladder-notify-last-text
-                               "✓ 🏆 击败 ⚔️ 首领 · 累计 1 · 剩 0\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
+                               "✓ 🏆 击败 ⚔️ 首领 · 5次\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
                 (cl-letf (((symbol-function 'read-multiple-choice)
                            (lambda (&rest _) '(?r "good"))))
                   (org-sm-review-confirm))
                 (should (equal org-ladder-sm-last-log
-                               '("🏆 击败 ⚔️ 首领 · 累计 1 · 剩 0"
+                               '("🏆 击败 ⚔️ 首领 · 5次"
                                  "🌱 幼苗 · 0d → 10m")))
                 (with-current-buffer "*Org Ladder*"
                   (should (string-match-p "🔥 上次战报 (2 张)" (buffer-string))))
@@ -225,6 +213,37 @@
     (should (funcall (org-sm--tree-filter nil "@cloze")))
     (should (funcall (org-sm--tree-filter nil "@seedling")))
     (should-not (funcall (org-sm--tree-filter nil "@boss")))))
+
+(ert-deftest org-ladder-today-utc-offset-and-unsaved-buffer ()
+  "Local-date conversion of UTC SRS_LAST and unsaved buffer scanning."
+  (let ((temp-file (make-temp-file "org-ladder-today-test-" nil ".org"))
+        (tz (getenv "TZ"))
+        buf)
+    (unwind-protect
+        (progn
+          (setenv "TZ" "UTC-8")
+          (setq buf (find-file-noselect temp-file))
+          (with-current-buffer buf
+            (org-mode)
+            ;; 2026-10-18T16:29:02Z is 2026-10-19 00:29:02 in UTC+8:
+            (insert "* [C] Midnight Cloze\n"
+                    "SCHEDULED: <2027-03-26 Fri 00:29>\n"
+                    ":PROPERTIES:\n:SRS_TYPE: cloze\n:SRS_LAST: 2026-10-18T16:29:02Z\n:END:\n"
+                    ":LOGBOOK:\n- cloze  :good  5mo  [2026-10-19 Mon 00:29]\n:END:\n"))
+          ;; Intentionally do NOT save `buf' to disk:
+          (let* ((cards (org-ladder-stock--scan-file temp-file))
+                 (tbl   (make-hash-table :test 'equal)))
+            (should (equal (plist-get (car cards) :date) "2026-10-19"))
+            (should (equal (org-ladder-stock--period-lines
+                            cards (lambda (d) (equal d "2026-10-19")))
+                           '("🗿 古树  +1")))
+            (org-ladder-sm--scan-file temp-file tbl)
+            (should (= (gethash '(2026 10 19) tbl 0) org-ladder-sm-score-per-review))))
+      (setenv "TZ" tz)
+      (when (buffer-live-p buf)
+        (with-current-buffer buf (set-buffer-modified-p nil))
+        (kill-buffer buf))
+      (delete-file temp-file))))
 
 (provide 'test-org-ladder-stock)
 ;;; test-org-ladder-stock.el ends here
