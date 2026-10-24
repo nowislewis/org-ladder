@@ -1,12 +1,12 @@
 ;;; org-ladder.el --- Gamification ladder for org-mode  -*- lexical-binding: t; -*-
 
 ;; Author: Org Ladder System
-;; Version: 3.0
+;; Version: 3.2
 ;; Package-Requires: ((emacs "27.1") (org "9.0"))
 
 ;;; Commentary:
-;; Core framework: time utilities, score aggregation, tier calculation,
-;; monthly reset, and display.  No org-file scanning happens here.
+;; Core framework: time utilities, score aggregation, and Campfire Hub display.
+;; No org-file scanning happens here.
 ;;
 ;; Scores come from sources registered in `org-ladder-score-sources'.
 ;; Each source is a zero-argument function returning ((TIME-KEY . SCORE) ...).
@@ -14,13 +14,6 @@
 ;; Bundled sources:
 ;;   org-ladder-clock.el  — DONE tasks via effort/clock  (loaded by default)
 ;;   org-ladder-sm.el     — org-sm review history        (opt-in)
-;;
-;; TIME-KEY constructors:
-;;   (org-ladder-time-key-day   YEAR MONTH DAY)
-;;   (org-ladder-time-key-month YEAR MONTH)
-;;   (org-ladder-time-key-week  YEAR WEEK)
-;;
-;; All keys are aggregated to month level before tier calculation.
 
 ;;; Code:
 
@@ -36,8 +29,7 @@
   :prefix "org-ladder-")
 
 (defcustom org-ladder-score-sources nil
-  "List of zero-argument functions, each returning ((TIME-KEY . SCORE) ...).
-TIME-KEY is produced by `org-ladder-time-key-day', `-month', or `-week'."
+  "List of zero-argument functions, each returning ((TIME-KEY . SCORE) ...)."
   :type '(repeat function)
   :group 'org-ladder)
 
@@ -160,8 +152,7 @@ Cached for 5 minutes; pass FORCE to bypass."
 
 ;;;###autoload
 (defcustom org-ladder-status-quotes
-  '("Keep the streak alive."
-    "Small wins compound."
+  '("Small wins compound."
     "Ship one brick today."
     "Momentum beats motivation."
     "Lock in and move."
@@ -180,6 +171,7 @@ Cached for 5 minutes; pass FORCE to bypass."
 (declare-function org-sm-review-start "org-sm")
 (declare-function org-sm-tree "org-sm")
 (declare-function org-ladder-sm--format-prev "org-ladder-sm")
+(declare-function org-ladder-sm-clean-log-entry "org-ladder-sm")
 (defvar org-ladder-sm-last-log)
 
 (defvar org-ladder-mode-map
@@ -195,10 +187,10 @@ Cached for 5 minutes; pass FORCE to bypass."
   "Campfire Hub mode for `*Org Ladder*'.
 \\[org-sm-review-start-light] starts a 6-card random expedition,
 \\[org-sm-review-start] reviews all due cards, \\[org-sm-tree] opens the
-card tree, and \\[forward-button] cycles through stage/monster buttons."
+card tree, and \\[forward-button] cycles through stage buttons."
   (setq-local header-line-format
               (substitute-command-keys
-               " \\[org-sm-review-start-light] 随机远征  \\[org-sm-review-start] 全量出征  \\[org-sm-tree] 选怪树图  \\[forward-button] 跳按钮  \\[revert-buffer] 刷新  \\[quit-window] 退出")
+               " \\[org-sm-review-start-light] 随机远征  \\[org-sm-review-start] 全量出征  \\[org-sm-tree] 卡片树图  \\[forward-button] 跳按钮  \\[revert-buffer] 刷新  \\[quit-window] 退出")
               revert-buffer-function
               (lambda (_ignore-auto _noconfirm)
                 (setq org-ladder--cache nil
@@ -209,12 +201,9 @@ card tree, and \\[forward-button] cycles through stage/monster buttons."
 ;;;###autoload
 (defun org-ladder-show-details (&optional months)
   "Show the Org Ladder Campfire Hub dashboard.
-With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
+With prefix argument MONTHS, also expand top deepest Clozes."
   (interactive "P")
-  (let* ((cur-ym    (org-ladder--month-key (current-time)))
-         (cur-year  (car cur-ym))
-         (cur-month (cadr cur-ym))
-         (top-n     (cond ((null months) 0)
+  (let* ((top-n     (cond ((null months) 0)
                           ((listp months) 10)
                           (t (prefix-numeric-value months))))
          (daily-tbl (org-ladder--collect-daily)))
@@ -238,69 +227,47 @@ With prefix argument MONTHS, also expand top deepest Clozes and Monsters."
                              (lambda (_) (require 'org-sm) (org-sm-review-start)))
                   "   "
                   (buttonize (substitute-command-keys
-                              "[🗺️ 选怪树图 (\\[org-sm-tree])]")
+                              "[🌲 卡片树图 (\\[org-sm-tree])]")
                              (lambda (_) (require 'org-sm) (call-interactively #'org-sm-tree)))
                   "\n")
           (insert (propertize "────────────────────────────────────────────────────────\n\n"
                               'face '(:foreground "#444444"))))
 
-        ;; ── Last session review log ────────────────────────────────────
-        (when-let* ((log (bound-and-true-p org-ladder-sm-last-log)))
-          (insert (propertize (format "🔥 上次战报 (%d 张)\n" (length log))
-                              'face '(:weight bold :height 1.2)))
-          (dolist (line log)
-            (let ((s (if (fboundp 'org-ladder-sm--format-prev)
-                         (org-ladder-sm--format-prev line)
-                       line)))
-              (insert "  "
-                      (replace-regexp-in-string
-                       " · \\([^·]+\\)\\'"
-                       (concat (propertize "  " 'display '(space :align-to 28)) "\\1")
-                       s t)
-                      "\n")))
-          (insert "\n"))
-
-        ;; ── Permanent stock & chronicle ────────────────────────────────
-        (require 'org-ladder-stock nil t)
-        (when (fboundp 'org-ladder-stock-insert-section)
-          (org-ladder-stock-insert-section nil top-n))
-
-        ;; ── Artifact progress (unlocked by cumulative score) ───────────
+        ;; ── Vine climb first: next goals and earned relics at a glance ──
         (require 'org-ladder-art nil t)
-        (insert (propertize "🏺 Artifact (累计解锁)\n" 'face '(:weight bold :height 1.2)))
         (if (fboundp 'org-ladder-art-insert-current)
             (org-ladder-art-insert-current
              (gethash (org-ladder-time-today) daily-tbl 0))
           (insert "  artifact module not loaded.\n\n"))
 
-        ;; ── GitHub style 14-day heatmap ────────────────────────────────
-        (insert (propertize "🔥 Activity\n" 'face '(:weight bold :height 1.2)))
-        (let* ((today-time (current-time))
-               (streak 0)
-               (best-day 0))
-          (let ((offset (if (> (gethash (org-ladder-time-from-emacs today-time) daily-tbl 0) 0) 0 1)))
-            (catch 'done
-              (dotimes (i 30)
-                (let* ((t-day (time-subtract today-time (seconds-to-time (* (+ i offset) 86400))))
-                       (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0)))
-                  (if (> sc 0)
-                      (setq streak (1+ streak))
-                    (throw 'done t))))))
-          (dotimes (i (nth 3 (decode-time today-time)))
-            (setq best-day (max best-day
-                                (gethash (list cur-year cur-month (1+ i)) daily-tbl 0))))
-          (insert "  ")
-          (cl-loop for i from 13 downto 0 do
-                   (let* ((t-day (time-subtract today-time (seconds-to-time (* i 86400))))
-                          (sc (gethash (org-ladder-time-from-emacs t-day) daily-tbl 0))
-                          (color (cond ((= sc 0)   "#30363D")
-                                       ((< sc 30)  "#0E4429")
-                                       ((< sc 90)  "#006D32")
-                                       ((< sc 180) "#26A641")
-                                       (t          "#39D353"))))
-                     (insert (propertize "■ " 'face `(:foreground ,color))))
-                   (when (= i 7) (insert "\n  ")))
-          (insert (format "\n  streak: %d days    best day: %d min\n" streak best-day)))
+        ;; ── Last session review log (pure symbols, grouped by count) ───
+        (when-let* ((log (bound-and-true-p org-ladder-sm-last-log)))
+          (insert (propertize (format "🔥 上次战报 (%d 张)\n" (length log))
+                              'face '(:weight bold :height 1.2))
+                  (propertize "  🌱幼苗 🌿成株 🌲常青 🗿古树 ⛰️远古 │ 🐣菜鸡 🐱小猫 🐯老虎 👹魔王 │ 🏆击败 ✨新卡\n"
+                              'face 'shadow))
+          (let ((counts (make-hash-table :test 'equal))
+                order)
+            (dolist (raw log)
+              (let ((k (if (fboundp 'org-ladder-sm-clean-log-entry)
+                           (org-ladder-sm-clean-log-entry raw)
+                         raw)))
+                (unless (gethash k counts) (push k order))
+                (puthash k (1+ (gethash k counts 0)) counts)))
+            (dolist (k (nreverse order))
+              (let ((n (gethash k counts))
+                    (s (if (fboundp 'org-ladder-sm--format-prev)
+                           (org-ladder-sm--format-prev k)
+                         k)))
+                (insert "  " s (if (> n 1) (format " ×%d" n) "") "\n")))
+            (insert "\n")))
+
+        ;; ── Permanent Forest stock & climb chronicle ───────────────────
+        (require 'org-ladder-stock nil t)
+        (when (fboundp 'org-ladder-stock-insert-section)
+          (org-ladder-stock-insert-section nil top-n))
+        (when (fboundp 'org-ladder-art-insert-chronicle)
+          (org-ladder-art-insert-chronicle))
 
         (goto-char (point-min))
         (setq buffer-read-only t))

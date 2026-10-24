@@ -1,23 +1,17 @@
 ;;; org-ladder-sm.el --- org-sm review scores for org-ladder  -*- lexical-binding: t; -*-
 
 ;; Author: Org Ladder System
-;; Version: 3.0
+;; Version: 3.2
 ;; Package-Requires: ((emacs "27.1") (org "9.0") (org-ladder "3.0"))
 
 ;;; Commentary:
 ;; Score source for org-sm spaced-repetition reviews.
 ;;
-;; Scans all LOGBOOK blocks in `org-ladder-sm-files'.  Each review line
-;; contributes `org-ladder-sm-score-per-review' points.
-;;
-;; org-sm review lines start with "- <lowercase>" + inactive timestamp:
-;;   - topic  a=1.5  [2026-03-11 Wed 18:47]
-;;   - cloze  :easy  [2026-03-09 Mon 00:00]
-;;   - dismissed    [2026-03-11 Wed 18:47]
-;;
-;; org built-in entries (CLOCK:, State, CLOSING NOTE...) are all uppercase,
-;; so lowercase is a reliable discriminator.  No SRS_TYPE dependency means
-;; dismissed cards are counted correctly.
+;; Scans all LOGBOOK blocks in `org-ladder-sm-files'.  Each valid review line
+;; (`- topic', `- cloze', `- dismissed', excluding `postpone' and `explain')
+;; contributes `org-ladder-sm-score-per-review' points (4 points).
+;; Each scanned card also contributes `org-ladder-sm-score-per-review' points
+;; toward the cumulative climb total.
 
 ;;; Code:
 
@@ -26,12 +20,15 @@
 (require 'org-ladder)
 (require 'org-ladder-stock)
 (require 'org-ladder-notify)
+(require 'org-ladder-art)
 
 (defvar org-sm-review-start-hook)
 (defvar org-sm-after-card-change-functions)
 (defvar org-sm-prompt-function)
 (defvar org-sm-feedback-function)
 (defvar org-sm-finish-function)
+(defvar org-sm-web-hud-function)
+(defvar org-sm-web-badge-function)
 (declare-function org-sm-default-feedback "org-sm")
 (declare-function org-sm--current-review-card-p "org-sm")
 (declare-function org-sm--show-prompt "org-sm")
@@ -53,38 +50,63 @@ live on each scan instead of captured as a stale snapshot."
   "Resolve `org-ladder-sm-files' to a concrete list of files."
   (org-ladder-stock--resolve-files org-ladder-sm-files))
 
-(defcustom org-ladder-sm-score-per-review 2
-  "Score awarded per review event."
+(defcustom org-ladder-sm-score-per-review 4
+  "Score awarded per review event and per card."
   :type 'number
   :group 'org-ladder-sm)
 
-;; org-sm review line: "- <lowercase-word> ... [YYYY-MM-DD ...]"
-;; Group 1 captures the date.
 (defconst org-ladder-sm--review-re
-  (concat "^[ \t]*- [a-z]"
-          ".*"
+  (concat "^[ \t]*- \\(topic\\|cloze\\|dismissed\\)\\b\\(.*\\)"
           "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)")
-  "Regexp matching an org-sm LOGBOOK review line.  Group 1 = YYYY-MM-DD.")
+  "Regexp matching an org-sm LOGBOOK review line.
+Group 1 = kind, Group 2 = middle text, Group 3 = YYYY-MM-DD.")
 
 (defun org-ladder-sm--scan-file (file tbl)
   "Scan all LOGBOOK blocks in FILE; accumulate day-key scores into TBL."
   (org-ladder-call-with-file
    file
    (lambda ()
-     (while (re-search-forward "^:LOGBOOK:" nil t)
-       (let* ((lb-start (point))
-              (lb-end   (save-excursion
-                          (re-search-forward "^:END:" nil t))))
-         (when lb-end
-           (save-excursion
-             (goto-char lb-start)
-             (while (re-search-forward org-ladder-sm--review-re lb-end t)
-               (let ((key (org-ladder-time-parse-iso (match-string 1))))
-                 (when key
-                   (puthash key
-                            (+ (gethash key tbl 0)
-                               org-ladder-sm-score-per-review)
-                            tbl)))))))))))
+     (let ((case-fold-search nil))
+       (while (re-search-forward "^:LOGBOOK:" nil t)
+         (let* ((lb-start (point))
+                (lb-end   (save-excursion
+                            (re-search-forward "^:END:" nil t))))
+           (when lb-end
+             (save-excursion
+               (goto-char lb-start)
+               (while (re-search-forward org-ladder-sm--review-re lb-end t)
+                 (let ((rest (match-string 2))
+                       (key  (org-ladder-time-parse-iso (match-string 3))))
+                   (when (and key
+                              (not (string-match-p
+                                    "\\`[ \t]+\\(?:postpone\\|explain\\)\\b"
+                                    rest)))
+                     (puthash key
+                              (+ (gethash key tbl 0)
+                                 org-ladder-sm-score-per-review)
+                              tbl))))))))))))
+
+(defun org-ladder-sm--count-cards-in-file (file)
+  "Count `:SRS_TYPE: topic|cloze' entries in FILE."
+  (let ((count 0))
+    (org-ladder-call-with-file
+     file
+     (lambda ()
+       (let ((case-fold-search t))
+         (while (re-search-forward "^[ \t]*:SRS_TYPE:[ \t]+\\(topic\\|cloze\\)\\b" nil t)
+           (setq count (1+ count))))))
+    count))
+
+(defun org-ladder-sm--card-bonus-score ()
+  "Return cumulative base score from all cards (`4 * card-count')."
+  (let ((total-cards 0))
+    (dolist (file (org-ladder-sm--files))
+      (when (file-exists-p file)
+        (condition-case err
+            (setq total-cards (+ total-cards (org-ladder-sm--count-cards-in-file file)))
+          (error (message "org-ladder-sm: error counting cards in %s: %s"
+                          file (error-message-string err))))))
+    (* total-cards org-ladder-sm-score-per-review)))
 
 (defun org-ladder-sm--collect ()
   "Return ((day-key . score) ...) from all org-sm review LOGBOOK entries."
@@ -118,30 +140,20 @@ live on each scan instead of captured as a stale snapshot."
   (setq org-ladder-sm--log-fresh t))
 
 (defun org-ladder-sm--stage-label (&optional days)
-  "Return Forest stage display string for DAYS (defaulting to seedling)."
-  (org-ladder-stock-stage-display (org-ladder-stock-stage (or days 0))))
+  "Return Forest stage icon for DAYS (defaulting to seedling)."
+  (org-ladder-stock-stage-icon (org-ladder-stock-stage (or days 0))))
 
 (defun org-ladder-sm--monster-label (&optional reviews)
-  "Return Monster tier display string for REVIEWS."
-  (org-ladder-stock-monster-display (org-ladder-stock-monster reviews)))
+  "Return Monster tier icon for REVIEWS."
+  (org-ladder-stock-monster-icon (org-ladder-stock-monster reviews)))
 
 (defun org-ladder-sm-banner (card)
-  "Return left-anchored stage / Monster identity string for CARD plist."
-  (let ((days (plist-get card :interval-days))
-        (rev  (or (plist-get card :reviews) 0))
-        (ct   (or (plist-get card :child-topics) 0))
-        (cc   (or (plist-get card :child-clozes) 0)))
-    (pcase (plist-get card :type)
-      ('topic
-       (format "%s · %d次%s" (org-ladder-sm--monster-label rev) rev
-               (cond ((and (> ct 0) (> cc 0)) (format " · %dT/%dC" ct cc))
-                     ((> cc 0)                (format " · %dC" cc))
-                     ((> ct 0)                (format " · %dT" ct))
-                     ((and days (> days 0))   (format " · %dd" days))
-                     (t ""))))
-      ('cloze
-       (format "%s · %s" (org-ladder-sm--stage-label days)
-               (if (and days (> days 0)) (format "%dd" days) "新卡"))))))
+  "Return minimal stage / Monster identity string for CARD plist."
+  (pcase (plist-get card :type)
+    ('topic (org-ladder-stock-monster-display
+             (org-ladder-stock-monster (plist-get card :reviews))))
+    ('cloze (org-ladder-stock-stage-display
+             (org-ladder-stock-stage (or (plist-get card :interval-days) 0))))))
 
 (defun org-ladder-sm--tree-nodes (here up base)
   "Collect (ME-P DEPTH TITLE) nodes up to 3 levels deep around HERE."
@@ -190,80 +202,75 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
         (propertize prev 'face 'warning)
       (propertize (format "✓ %s" prev) 'face 'success))))
 
+(defun org-ladder-sm--climb-line ()
+  "Return a quiet peripheral climb line for the review HUD, or nil."
+  (ignore-errors
+    (let ((st (org-ladder-art-climb-state)))
+      (format "🧗 %dF %s"
+              (plist-get st :floor)
+              (org-ladder-art-step-bar (plist-get st :step-in-floor)
+                                       (plist-get st :steps-per-floor))))))
+
 (defun org-ladder-sm-prompt (state)
-  "Present review STATE in the bottom-right HUD with feedback and context tree."
+  "Present current card STATE in the bottom-right HUD with context tree."
   (let* ((card    (plist-get state :card))
          (raw-pos (or (plist-get state :position) "SM"))
          (pos     (if (string-match "\\([0-9]+/[0-9]+\\)" raw-pos)
                       (format "[%s]" (match-string 1 raw-pos))
                     (format "[%s]" raw-pos)))
          (hdr     (format "%s %s" (org-ladder-sm-banner card) pos))
-         (prev-ln (org-ladder-sm--format-prev
-                   (or (plist-get state :prev)
-                       (and (not org-ladder-sm--log-fresh)
-                            (car (last org-ladder-sm-last-log))))))
-         (title   (or prev-ln hdr))
-         (body    (if prev-ln
-                      (or (org-ladder-sm--context-tree hdr) hdr)
-                    (org-ladder-sm--context-tree)))
+         (tree    (org-ladder-sm--context-tree))
+         (climb   (org-ladder-sm--climb-line))
+         (body    (string-join (delq nil (list tree (and climb (propertize climb 'face 'shadow))))
+                               "\n"))
          (keys    (and (fboundp 'org-sm-review-keys-hint)
                        (org-sm-review-keys-hint))))
-    (if (org-ladder-notify body :title title)
-        (message "%s" (string-join (delq nil (list prev-ln hdr keys)) "  |  "))
+    (if (org-ladder-notify body :title hdr)
+        (message "%s" (string-join (delq nil (list hdr keys)) "  |  "))
       (when keys (message "%s" keys)))))
 
 (defun org-ladder-sm--on-card-change (event)
   "Invalidate derived score caches and refresh active HUD on card edits."
   (setq org-ladder--cache nil org-ladder--daily-cache nil org-ladder--cache-time nil)
   (when (and (fboundp 'org-sm--current-review-card-p)
-             (org-sm--current-review-card-p)
-             (fboundp 'org-sm--show-prompt))
-    (pcase (plist-get event :action)
-      ('extract (org-sm--show-prompt "🗡️ 产出子卡 +1"))
-      ('edit    (org-sm--show-prompt "✨ 已精炼正文")))))
-
-(defun org-ladder-sm--ivl-arrow (old new &optional label mins)
-  "Format interval transition from OLD days (or MINS) to NEW days (or LABEL)."
-  (let ((lhs (cond ((and old (> old 0)) (format "%dd" old))
-                   ((and mins (> mins 0)) (format "%dm" mins))
-                   (t "0d")))
-        (rhs (if (and new (> new 0)) (format "%dd" new) (or label "0d"))))
-    (format "%s → %s" lhs rhs)))
+             (org-sm--current-review-card-p))
+    (when (eq (plist-get event :action) 'extract)
+      (when org-ladder-sm--log-fresh
+        (setq org-ladder-sm-last-log nil org-ladder-sm--log-fresh nil))
+      (setq org-ladder-sm-last-log
+            (append org-ladder-sm-last-log '("✨"))))
+    (when (fboundp 'org-sm--show-prompt)
+      (pcase (plist-get event :action)
+        ('extract (org-sm--show-prompt "✨"))
+        ('edit    (org-sm--show-prompt "✎"))))))
 
 (defun org-ladder-sm-feedback (event)
-  "Format unified monster and forest stage feedback for EVENT."
+  "Format pure icon feedback for EVENT (no interval or count noise)."
   (let* ((action (plist-get event :action))
          (card   (plist-get event :card))
          (type   (plist-get card :type))
          (rev    (or (plist-get card :reviews) 0))
          (old    (plist-get event :old-days))
          (new    (plist-get event :new-days))
-         (arrow  (org-ladder-sm--ivl-arrow old new
-                                           (plist-get event :interval-label)
-                                           (plist-get card :interval-mins)))
          (text
           (pcase action
             ('dismiss
              (if (eq type 'topic)
-                 (format "🏆 击败 %s · %d次" (org-ladder-sm--monster-label rev) rev)
-               (format "%s · 已归档" (org-ladder-sm--stage-label old))))
+                 (format "🏆 %s" (org-ladder-sm--monster-label rev))
+               (format "📦 %s" (org-ladder-sm--stage-label old))))
             ('topic
              (let ((m0 (org-ladder-sm--monster-label rev))
                    (m1 (org-ladder-sm--monster-label (1+ rev))))
-               (if (equal m0 m1)
-                   (format "%s · %d次 · %s" m1 (1+ rev) arrow)
-                 (format "%s → %s · %s" m0 m1 arrow))))
+               (if (equal m0 m1) m1 (format "%s → %s" m0 m1))))
             ('cloze
              (let ((s0 (and old (> old 0) (org-ladder-sm--stage-label old)))
                    (s1 (org-ladder-sm--stage-label new)))
-               (format "%s%s · %s"
+               (format "%s%s"
                        (if (eq (plist-get event :rating) :again) "↻ " "")
                        (if (and s0 (> (or new 0) 0) (not (equal s0 s1)))
                            (format "%s → %s" s0 s1)
-                         s1)
-                       arrow)))
-            ('postpone
-             (format "推迟 %dd" (plist-get event :postpone-days)))
+                         s1))))
+            ('postpone "⏳")
             (_ (if (fboundp 'org-sm-default-feedback)
                    (org-sm-default-feedback event)
                  (format "%s" action))))))
@@ -273,12 +280,47 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
       (setq org-ladder-sm-last-log (append org-ladder-sm-last-log (list text))))
     text))
 
+(defun org-ladder-sm-clean-log-entry (s)
+  "Normalize legacy log string S to the current icon set."
+  (let* ((s1 (replace-regexp-in-string
+              "\\(?:[ \t]*·.*\\|[ \t]+\\(?:幼苗\\|成株\\|常青\\|古树\\|远古\\|菜鸡\\|小猫\\|老虎\\|小怪\\|精英\\|首领\\|魔王\\|击败\\|产出子卡.*\\)\\)"
+              "" s))
+         (s2 (string-replace "👾" "🐣"
+              (string-replace "🛡️" "🐱"
+               (string-replace "⚔️" "🐯"
+                (string-replace "🗡️" "✨" s1))))))
+    (string-trim s2)))
+
 (defun org-ladder-sm-bonfire (&optional prev _aborted)
   "Close review HUD posframe, display `*Org Ladder*' buffer, and return PREV."
   (org-ladder-notify-close)
   (when (fboundp 'org-ladder-show-details)
     (org-ladder-show-details))
   (org-ladder-sm--format-prev prev))
+
+(defun org-ladder-sm-web-hud (&optional include-forest)
+  "Return fine-grained climb and relic HUD plist for `org-sm-web'.
+When INCLUDE-FOREST is non-nil, also include the Forest and climb chronicle."
+  (let ((climb (org-ladder-art-climb-state nil include-forest)))
+    (if include-forest
+        (let* ((sum (org-ladder-stock-summary))
+               (stages (mapcar (lambda (pair)
+                                 (list :name (symbol-name (car pair))
+                                       :label (org-ladder-stock-stage-icon (car pair))
+                                       :count (cdr pair)))
+                               (plist-get sum :stages)))
+               (chronicle (mapcar (lambda (r)
+                                    (list :period (plist-get r :period)
+                                          :floors (plist-get r :floors)
+                                          :from (plist-get r :from)
+                                          :to (plist-get r :to)
+                                          :tiles (plist-get r :tiles)
+                                          :relics (vconcat (plist-get r :relics))))
+                                  (org-ladder-art-chronicle 8))))
+          (append climb (list :trees (plist-get sum :trees)
+                              :stages (vconcat stages)
+                              :chronicle (vconcat chronicle))))
+      climb)))
 
 ;;;###autoload
 (defun org-ladder-sm-setup-review-hook ()
@@ -288,7 +330,9 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
   (add-hook 'org-sm-after-card-change-functions #'org-ladder-sm--on-card-change)
   (setq org-sm-prompt-function #'org-ladder-sm-prompt
         org-sm-feedback-function #'org-ladder-sm-feedback
-        org-sm-finish-function #'org-ladder-sm-bonfire))
+        org-sm-finish-function #'org-ladder-sm-bonfire
+        org-sm-web-hud-function #'org-ladder-sm-web-hud
+        org-sm-web-badge-function #'org-ladder-sm-banner))
 
 ;;;###autoload
 (with-eval-after-load 'org-sm

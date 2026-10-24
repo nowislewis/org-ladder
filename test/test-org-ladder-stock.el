@@ -60,7 +60,7 @@
                          '((mob 1 0) (elite 0 0) (boss 2 1) (demon 0 0))))
           (should (equal (org-ladder-stock--period-lines
                           cards (lambda (d) (string-prefix-p "2026-10" d)))
-                         '("🌲 常青  +1" "⚔️ 首领  斩 1"))))
+                         '("🌲 常青  +1" "🐣 新魔物  +1" "🐯 老虎  斩 1"))))
       (delete-file temp-file))))
 
 (ert-deftest org-ladder-sm-boss-banner-kill-and-bonfire ()
@@ -75,13 +75,13 @@
     (let ((cloze-evergreen '(:type cloze :title "C2" :reviews 3 :interval-days 42
                              :child-topics 0 :child-clozes 0)))
       (should (equal (org-ladder-sm-banner boss-unextracted)
-                     "👹 魔王 · 11次"))
+                     "👹 魔王"))
       (should (equal (org-ladder-sm-banner boss-wounded)
-                     "👹 魔王 · 8次 · 2T/1C"))
+                     "👹 魔王"))
       (should (equal (org-ladder-sm-banner cloze-card)
-                     "🌱 幼苗 · 新卡"))
+                     "🌱 幼苗"))
       (should (equal (org-ladder-sm-banner cloze-evergreen)
-                     "🌲 常青 · 42d")))
+                     "🌲 常青")))
     (let ((ev-promote (list :action 'cloze :card cloze-card
                             :rating :good :old-days 25 :new-days 42 :session t))
           (ev-same    (list :action 'cloze :card cloze-card
@@ -98,19 +98,19 @@
           (ev-archive (list :action 'dismiss :card cloze-card
                             :old-days 10 :session t)))
       (should (equal (org-ladder-sm-feedback ev-promote)
-                     "🌿 成株 → 🌲 常青 · 25d → 42d"))
+                     "🌿 → 🌲"))
       (should (equal (org-ladder-sm-feedback ev-same)
-                     "🌲 常青 · 42d → 65d"))
+                     "🌲"))
       (should (equal (org-ladder-sm-feedback ev-again)
-                     "↻ 🌱 幼苗 · 42d → 10m"))
+                     "↻ 🌱"))
       (should (equal (org-ladder-sm-feedback ev-topic)
-                     "🛡️ 精英 → ⚔️ 首领 · 6d → 9d"))
+                     "🐱 → 🐯"))
       (should (equal (org-ladder-sm-feedback ev-mob)
-                     "🏆 击败 🛡️ 精英 · 3次"))
+                     "🏆 🐱"))
       (should (equal (org-ladder-sm-feedback ev-kill)
-                     "🏆 击败 👹 魔王 · 8次"))
+                     "🏆 👹"))
       (should (equal (org-ladder-sm-feedback ev-archive)
-                     "🌿 成株 · 已归档")))))
+                     "📦 🌿")))))
 
 (ert-deftest org-ladder-sm-session-isolation-and-cache-invalidation ()
   (let ((org-ladder--cache '(stale))
@@ -151,28 +151,29 @@
                 (should (org-sm--current-review-card-p))
                 (should-not (local-variable-p 'header-line-format))
                 (should (equal org-ladder-notify-last-text
-                               "⚔️ 首领 · 5次 · 1C [1/2]\n├─ Boss ◀\n  └─ Memory"))
+                               "🐯 老虎 [1/2]\n├─ Boss ◀\n  └─ Memory\n🧗 1F [░░░░░░]"))
                 ;; Extracting a child card while reviewing updates the Boss HUD immediately:
                 (org-sm-extract 'topic "sub" 0 3)
                 (should (equal org-ladder-notify-last-text
-                               "✓ 🗡️ 产出子卡 +1\n├─ Boss  ◀ ⚔️ 首领 · 5次 · 1T/1C [1/2]\n  ├─ Memory\n  └─ [T] sub"))
+                               "🐯 老虎 [1/2]\n├─ Boss ◀\n  ├─ Memory\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
                 (should (equal org-ladder-notify-last-text
-                               "✓ 🏆 击败 ⚔️ 首领 · 5次\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
+                               "🌱 幼苗 [2/2]\n▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
                 (should (equal org-ladder-notify-last-text
-                               "✓ 🏆 击败 ⚔️ 首领 · 5次\n▸ Boss\n  ├─ Memory  ◀ 🌱 幼苗 · 新卡 [2/2]\n  └─ [T] sub"))
+                               "🌱 幼苗 [2/2]\n▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
                 (cl-letf (((symbol-function 'read-multiple-choice)
                            (lambda (&rest _) '(?r "good"))))
                   (org-sm-review-confirm))
                 (should (equal org-ladder-sm-last-log
-                               '("🏆 击败 ⚔️ 首领 · 5次"
-                                 "🌱 幼苗 · 0d → 10m")))
+                               '("✨"
+                                 "🏆 🐯"
+                                 "🌱")))
                 (with-current-buffer "*Org Ladder*"
-                  (should (string-match-p "🔥 上次战报 (2 张)" (buffer-string))))
+                  (should (string-match-p "🔥 上次战报 (3 张)" (buffer-string))))
                 (should-not (buffer-narrowed-p))
                 (should-not org-sm--current-card-marker)
                 (should-not org-sm--cloze-state)
@@ -244,6 +245,25 @@
         (with-current-buffer buf (set-buffer-modified-p nil))
         (kill-buffer buf))
       (delete-file temp-file))))
+
+(ert-deftest org-ladder-art-quantized-climb-math ()
+  "24 pts = 1 floor (6 pips); every 5th floor = 1 fog tile; 180 floors = 1 relic."
+  (let ((st (org-ladder-art-climb-state 20)))
+    (should (= (plist-get st :cleared-floors) 0))
+    (should (= (plist-get st :floor) 1))
+    (should (= (plist-get st :step-in-floor) 5)))
+  (let ((st (org-ladder-art-climb-state (+ (* 24 5 27) (* 24 4) 16))))
+    (should (= (plist-get st :floor) 140))
+    (should (= (plist-get st :step-in-floor) 4))
+    (should (= (plist-get st :steps-left) 2))
+    (should (= (plist-get st :special-floor) 140))
+    (should (= (plist-get st :open-tiles) 27))
+    (should-not (plist-get st :title)))
+  (let ((st (org-ladder-art-climb-state 4320)))
+    (should (= (plist-get st :cleared-floors) 180))
+    (should (= (plist-get st :unlocked-count) 1))
+    (should (= (plist-get st :open-tiles) 0))
+    (should-not (plist-get st :svg))))
 
 (provide 'test-org-ladder-stock)
 ;;; test-org-ladder-stock.el ends here

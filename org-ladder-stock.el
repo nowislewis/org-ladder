@@ -75,9 +75,9 @@ Prefer a function (e.g. `org-sm-files') so the file set is resolved live."
       (symbol-name name)))
 
 (defconst org-ladder-stock-monsters
-  '((mob   . (0 2   "👾 小怪"))
-    (elite . (2 5   "🛡️ 精英"))
-    (boss  . (5 8   "⚔️ 首领"))
+  '((mob   . (0 2   "🐣 菜鸡"))
+    (elite . (2 5   "🐱 小猫"))
+    (boss  . (5 8   "🐯 老虎"))
     (demon . (8 nil "👹 魔王")))
   "Alist of (NAME MIN-REV MAX-REV DISPLAY) for Topic monster tiers.")
 
@@ -95,6 +95,14 @@ Prefer a function (e.g. `org-sm-files') so the file set is resolved live."
   "Return the display string for monster tier NAME."
   (or (nth 2 (cdr (assoc name org-ladder-stock-monsters)))
       (symbol-name name)))
+
+(defun org-ladder-stock-stage-icon (name)
+  "Return the icon-only symbol for stage NAME."
+  (car (split-string (org-ladder-stock-stage-display name))))
+
+(defun org-ladder-stock-monster-icon (name)
+  "Return the icon-only symbol for monster tier NAME."
+  (car (split-string (org-ladder-stock-monster-display name))))
 
 (defun org-ladder-stock-boss-state (type reviews dismissed &optional child-topics child-clozes)
   "Return Boss state (`active', `wounded', `slain', or nil) for a card."
@@ -138,7 +146,8 @@ Falls back to `org-ladder-sm--files' when unset so one file list serves both."
            (days (plist-get card :interval-days))
            (rev  (plist-get card :reviews)))
        (append card
-               (list :stage (and (eq type 'cloze) days (org-ladder-stock-stage days))
+               (list :stage (and (eq type 'cloze)
+                                 (org-ladder-stock-stage (or days 0)))
                      :monster (and (eq type 'topic) (org-ladder-stock-monster rev))
                      :boss-state (org-ladder-stock-boss-state
                                   type rev
@@ -206,8 +215,8 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
          (counts (make-hash-table :test 'eq))
          (m-live (make-hash-table :test 'eq))
          (m-slain (make-hash-table :test 'eq)))
-    (dolist (c sched)
-      (let ((st (plist-get c :stage)))
+    (dolist (c clozes)
+      (let ((st (or (plist-get c :stage) 'seedling)))
         (puthash st (1+ (gethash st counts 0)) counts)))
     (dolist (c cards)
       (when (eq (plist-get c :type) 'topic)
@@ -243,12 +252,17 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
                         'display `(space :align-to ,col)))))
 
 (defun org-ladder-stock--insert-overview (sum)
-  "Insert the clickable Forest and Monster overview blocks for SUM."
-  (insert (propertize (format "📚 知识森林 · 共 %d 棵树 (已排期 %d · 待萌发 %d)\n"
-                              (or (plist-get sum :trees) 0)
-                              (plist-get sum :scheduled)
-                              (plist-get sum :unscheduled))
-                      'face '(:weight bold :height 1.2)))
+  "Insert the clickable 5-stage Cloze Forest overview for SUM."
+  (let ((live-topics (apply #'+ (mapcar #'cadr (plist-get sum :monsters)))))
+    (insert (propertize (format "📚 知识森林 · 共 %d 棵树"
+                                (or (plist-get sum :trees) 0))
+                        'face '(:weight bold :height 1.2))
+            (if (> live-topics 0)
+                (propertize (format "  (另有 %d 张阅读卡待拆解)\n" live-topics)
+                            'face 'shadow)
+              "\n")
+            (propertize "  🌱幼苗 · 🌿成株 · 🌲常青 · 🗿古树 · ⛰️远古\n"
+                        'face 'shadow)))
   (let ((max-c (max 1 (apply #'max (cons 1 (mapcar #'cdr (plist-get sum :stages)))))))
     (dolist (pair (plist-get sum :stages))
       (let* ((name  (car pair))
@@ -256,87 +270,28 @@ CARDS defaults to `org-ladder-stock-cards'.  Keys:
              (len   (if (= count 0) 0 (max 1 (round (* 24 (/ (float count) max-c))))))
              (bar   (make-string len ?█))
              (btn   (org-ladder-stock--tree-button
-                     (org-ladder-stock-stage-display name)
+                     (org-ladder-stock-stage-icon name)
                      (concat "@" (symbol-name name)))))
         (insert "  " btn)
-        (org-ladder-stock--align-to 12)
+        (org-ladder-stock--align-to 7)
         (insert (format "%4d" count))
-        (org-ladder-stock--align-to 18)
+        (org-ladder-stock--align-to 13)
         (insert (propertize bar 'face '(:foreground "#66D9EF")) "\n"))))
-  (when-let* ((deep (plist-get sum :deepest)))
-    (insert "  最远")
-    (org-ladder-stock--align-to 12)
-    (insert (format "%3dd" (plist-get deep :interval-days)))
-    (org-ladder-stock--align-to 18)
-    (insert (org-ladder-stock--title-button deep) "\n"))
-  (let* ((monsters (plist-get sum :monsters))
-         (live-tot (apply #'+ (mapcar #'cadr monsters)))
-         (slain-tot (apply #'+ (mapcar #'caddr monsters)))
-         (max-m (max 1 (apply #'max (cons 1 (mapcar #'cadr monsters))))))
-    (insert "\n"
-            (propertize (format "⚔️ 守林魔物 · 存活 %d · 已讨伐 %d（已削血 %d）\n"
-                                live-tot slain-tot (plist-get sum :boss-wounded))
-                        'face '(:weight bold :height 1.2)))
-    (dolist (row monsters)
-      (pcase-let* ((`(,name ,live ,slain) row)
-                   (len (if (= live 0) 0 (max 1 (round (* 20 (/ (float live) max-m))))))
-                   (bar (make-string len ?█))
-                   (btn (org-ladder-stock--tree-button
-                         (org-ladder-stock-monster-display name)
-                         (concat "@" (symbol-name name)))))
-        (insert "  " btn)
-        (org-ladder-stock--align-to 12)
-        (insert (format "%4d" live))
-        (org-ladder-stock--align-to 18)
-        (insert (propertize bar 'face '(:foreground "#F92672")))
-        (org-ladder-stock--align-to 40)
-        (insert (format "(已斩 %d)\n" slain)))))
   (insert "\n"))
 
-(defun org-ladder-stock-insert-section (&optional cards top-n)
-  "Insert the permanent Cloze stock and Monster pipeline block into current buffer.
-When TOP-N is positive, also list the TOP-N deepest Clozes and oldest Monsters."
+(defun org-ladder-stock-insert-section (&optional cards _top-n)
+  "Insert the permanent Cloze Forest stock block into current buffer."
   (let* ((cards (or cards (org-ladder-stock-cards)))
-         (sum (org-ladder-stock-summary cards))
-         (n   (or top-n 0)))
+         (sum (org-ladder-stock-summary cards)))
     (if (= (plist-get sum :total) 0)
         (insert "📚 知识森林\n  (no org-sm cards found)\n\n")
-      (org-ladder-stock--insert-overview sum)
-      (when (> n 0)
-        (insert (propertize (format "🛡️ 最远的 %d 棵树\n" n)
-                            'face '(:weight bold :height 1.15)))
-        (let ((sched (cl-remove-if-not
-                      (lambda (c)
-                        (and (eq (plist-get c :type) 'cloze)
-                             (not (plist-get c :dismissed))
-                             (plist-get c :interval-days)))
-                      cards)))
-          (dolist (c (seq-take (sort sched (lambda (a b)
-                                             (> (plist-get a :interval-days)
-                                                (plist-get b :interval-days))))
-                               n))
-            (insert (format "  %4dd  %s\n"
-                            (plist-get c :interval-days)
-                            (org-ladder-stock--title-button c)))))
-        (when-let* ((bosses (seq-take (plist-get sum :bosses) n)))
-          (insert (propertize (format "\n👹 盘踞最久的 %d 只魔物\n" (length bosses))
-                              'face '(:weight bold :height 1.15)))
-          (dolist (b bosses)
-            (let ((ct (or (plist-get b :child-topics) 0))
-                  (cc (or (plist-get b :child-clozes) 0)))
-              (insert (format "  照面 %2d 次  %-12s %s\n"
-                              (plist-get b :reviews)
-                              (if (> (+ ct cc) 0)
-                                  (format "[削血 %dT/%dC]" ct cc)
-                                "[0子卡]")
-                              (org-ladder-stock--title-button b))))))
-        (insert "\n"))
-      (org-ladder-stock-insert-chronicle cards))))
+      (org-ladder-stock--insert-overview sum))))
 
 (defun org-ladder-stock--period-lines (cards pred)
-  "Return per-level Cloze gain and Monster kill lines for CARDS matching PRED."
+  "Return Cloze gain and Monster kill/spawn lines for CARDS matching PRED."
   (let ((st (make-hash-table :test 'eq))
         (sl (make-hash-table :test 'eq))
+        (new-topics 0)
         lines)
     (dolist (c cards)
       (when-let* ((d (plist-get c :date)))
@@ -350,11 +305,16 @@ When TOP-N is positive, also list the TOP-N deepest Clozes and oldest Monsters."
                       (plist-get c :dismissed))
                  (let ((m (or (plist-get c :monster)
                               (org-ladder-stock-monster (plist-get c :reviews)))))
-                   (puthash m (1+ (gethash m sl 0)) sl)))))))
+                   (puthash m (1+ (gethash m sl 0)) sl)))
+                ((and (eq (plist-get c :type) 'topic)
+                      (zerop (or (plist-get c :reviews) 0)))
+                 (setq new-topics (1+ new-topics)))))))
     (dolist (m org-ladder-stock-monsters)
       (let ((n (gethash (car m) sl 0)))
         (when (> n 0)
           (push (format "%s  斩 %d" (nth 2 (cdr m)) n) lines))))
+    (when (> new-topics 0)
+      (push (format "🐣 新魔物  +%d" new-topics) lines))
     (dolist (s org-ladder-stock-stages)
       (let ((n (gethash (car s) st 0)))
         (when (> n 0)

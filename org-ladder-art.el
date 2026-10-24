@@ -1,4 +1,4 @@
-;;; org-ladder-art.el --- Vector relic gallery for org-ladder -*- lexical-binding: t; -*-
+;;; org-ladder-art.el --- Quantized vine climb and vector relic gallery -*- lexical-binding: t; -*-
 
 (require 'org-ladder)
 (require 'cl-lib)
@@ -10,12 +10,56 @@
 (declare-function svg-circle "svg")
 (declare-function svg-line "svg")
 (declare-function svg-image "svg")
+(declare-function svg-print "svg")
+(declare-function org-ladder-sm--card-bonus-score "org-ladder-sm")
 
 (defcustom org-ladder-art-directory
   (expand-file-name "arts" (file-name-directory (or load-file-name buffer-file-name default-directory)))
-  "Directory storing plain Lisp vector relic `.art' files (named YYYY-MM.art)."
+  "Directory storing plain Lisp vector relic `.art' files."
   :type 'directory
   :group 'org-ladder)
+
+(defconst org-ladder-art-points-per-step 24
+  "Ladder points per floor (`score // 24' = 6 card reviews).")
+
+(defconst org-ladder-art-steps-per-floor 5
+  "Floors per special fog-clearing floor (every 5 floors = 120 pts = +1 fog tile).")
+
+(defconst org-ladder-art-floors-per-relic 36
+  "Fog tiles per vector relic (36 special floors = 180 floors = 4,320 pts).")
+
+(defconst org-ladder-art-relic-step
+  (* org-ladder-art-points-per-step
+     org-ladder-art-steps-per-floor
+     org-ladder-art-floors-per-relic)
+  "Points required to fully unveil one 36-tile vector relic (4,320 points).")
+
+(defconst org-ladder-art-vine-window '(2 . 5)
+  "Floors drawn (BELOW . ABOVE) the current floor in the vine ladder.")
+
+(defun org-ladder-art--vine (floor total-relics)
+  "Return vine ladder rows around FLOOR, highest floor first.
+Every 5th floor is a special floor that unveils 1 fog tile; every 180th
+floor completes a relic."
+  (let* ((span org-ladder-art-steps-per-floor)
+         (tiles org-ladder-art-floors-per-relic)
+         (per (* span tiles))
+         rows)
+    (cl-loop for f from (max 1 (- floor (car org-ladder-art-vine-window)))
+             to (+ floor (cdr org-ladder-art-vine-window))
+             for specialp = (zerop (mod f span))
+             for relic = (1+ (/ (1- f) per))
+             for tile = (and specialp (1+ (mod (1- (/ f span)) tiles)))
+             do (push (list :floor f
+                            :status (cond ((< f floor) "cleared")
+                                          ((= f floor) "current")
+                                          (t "locked"))
+                            :special (and specialp t)
+                            :relic (and (<= relic total-relics) relic)
+                            :tile tile
+                            :relic-done (and specialp (= tile tiles)))
+                      rows))
+    rows))
 
 (defun org-ladder-art--read (ym-str)
   "Read plain Lisp relic plist for YM-STR from `org-ladder-art-directory'."
@@ -32,11 +76,20 @@
                   (directory-files org-ladder-art-directory nil "\\.art\\'"))
           #'string<)))
 
+(defun org-ladder-art--total-score ()
+  "Return cumulative total score including daily sources and card stock bonus."
+  (+ (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores)))
+     (if (fboundp 'org-ladder-sm--card-bonus-score)
+         (org-ladder-sm--card-bonus-score)
+       0)))
+
 (defun org-ladder-art--unlock-dates (step)
   "Return vector of unlock date strings (\"YYYY-MM-DD\") per STEP-point threshold."
   (let ((days (sort (org-ladder-hash-to-alist (org-ladder--collect-daily))
                     (lambda (a b) (value< (car a) (car b)))))
-        (acc 0)
+        (acc (if (fboundp 'org-ladder-sm--card-bonus-score)
+                 (org-ladder-sm--card-bonus-score)
+               0))
         (next step)
         dates)
     (dolist (d days)
@@ -47,13 +100,13 @@
         (setq next (+ next step))))
     (vconcat (nreverse dates))))
 
-(defun org-ladder-art--allocations ()
-  "Allocate cumulative total score sequentially across available `.art' files.
-Each artifact requires 4500 points; points spill into the next artifact once
-the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
-  (let ((remaining (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores))))
-        (step 4500)
-        (dates (org-ladder-art--unlock-dates 4500))
+(defun org-ladder-art--allocations (&optional total-score)
+  "Allocate cumulative TOTAL-SCORE sequentially across available `.art' files.
+Each artifact requires `org-ladder-art-relic-step' points (4,320).
+Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
+  (let ((remaining (or total-score (org-ladder-art--total-score)))
+        (step org-ladder-art-relic-step)
+        (dates (org-ladder-art--unlock-dates org-ladder-art-relic-step))
         (idx 0)
         result)
     (dolist (ym-str (org-ladder-art--available-keys))
@@ -62,13 +115,13 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
               (date  (and (< idx (length dates)) (aref dates idx))))
           (setq remaining (max 0 (- remaining alloc))
                 idx (1+ idx))
-          (push (list ym-str alloc item date) result))))
+          (push (list ym-str alloc item date idx) result))))
     (nreverse result)))
 
-(defun org-ladder-art--active-entry ()
-  "Return the (YM-STR ALLOC ITEM) currently being excavated, or the last one."
-  (let ((allocs (org-ladder-art--allocations)))
-    (or (cl-find-if (lambda (e) (< (nth 1 e) 4500)) allocs)
+(defun org-ladder-art--active-entry (&optional allocs)
+  "Return the (YM-STR ALLOC ITEM DATE INDEX) currently being excavated."
+  (let ((allocs (or allocs (org-ladder-art--allocations))))
+    (or (cl-find-if (lambda (e) (< (nth 1 e) org-ladder-art-relic-step)) allocs)
         (car (last allocs)))))
 
 (defun org-ladder-art--shuffle-indices (indices seed)
@@ -83,17 +136,17 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
         (aset vec j tmp)))
     (append vec nil)))
 
-(defun org-ladder-art--render-svg (ym-str item ratio)
-  "Render vector shapes in ITEM with 6x6 sector fog at unlock RATIO (0.0..1.0)."
+(defun org-ladder-art--build-svg (seed item open-n)
+  "Build an SVG object for ITEM with OPEN-N (0..36) unveiled fog sectors."
   (require 'svg)
   (let* ((w 264) (h 240)
          (cols 6) (rows 6)
          (cw (/ w cols)) (ch (/ h rows))
          (total (* cols rows))
-         (open-n (min total (round (* total ratio))))
+         (open-n (max 0 (min total open-n)))
          (order (org-ladder-art--shuffle-indices
                  (number-sequence 0 (1- total))
-                 (abs (sxhash ym-str))))
+                 (* (max 1 seed) 97)))
          (open-set (seq-take order open-n))
          (svg (svg-create w h)))
     (svg-rectangle svg 0 0 w h :fill "#0D1117" :rx 8 :ry 8)
@@ -114,16 +167,26 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
                       :stroke "#3B4252" :stroke-width 1.5)
             (svg-line svg (+ sx cw -8) (+ sy 8) (+ sx 8) (+ sy ch -8)
                       :stroke "#3B4252" :stroke-width 1.5)))))
-    (svg-image svg :ascent 'center)))
+    svg))
 
-(defun org-ladder-art--render-tty (ym-str ratio)
+(defun org-ladder-art--render-svg (seed item open-n)
+  "Render vector shapes in ITEM as an Emacs image with OPEN-N fog tiles unveiled."
+  (svg-image (org-ladder-art--build-svg seed item open-n) :ascent 'center))
+
+(defun org-ladder-art--svg-string (seed item open-n)
+  "Return the SVG XML string for ITEM with OPEN-N fog tiles unveiled."
+  (require 'svg)
+  (with-temp-buffer
+    (svg-print (org-ladder-art--build-svg seed item open-n))
+    (buffer-string)))
+
+(defun org-ladder-art--render-tty (seed open-n)
   "Render a compact 6x6 sector grid in non-graphical terminals."
   (let* ((total 36)
-         (open-n (min total (round (* total ratio))))
          (open-set (seq-take (org-ladder-art--shuffle-indices
                               (number-sequence 0 (1- total))
-                              (abs (sxhash ym-str)))
-                             open-n)))
+                              (* (max 1 seed) 97))
+                             (max 0 (min total open-n)))))
     (dotimes (r 6)
       (insert "    ")
       (dotimes (c 6)
@@ -132,20 +195,75 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
                   (propertize "▒▒ " 'face '(:foreground "#444444")))))
       (insert "\n"))))
 
-(defun org-ladder-art--render-buffer (ym-str score item &optional today-score unlock-date)
+(defun org-ladder-art-climb-state (&optional total-score with-svg)
+  "Compute fine-grained vine climb (`score // 24' = floors) and relic state.
+1 floor = 24 pts (6 cards, 4 pts per pip); every 5th floor = special floor
+\(+1 fog tile = 120 pts); 1 relic = 180 floors (36 special floors = 4,320 pts)."
+  (let* ((score (max 0 (or total-score (org-ladder-art--total-score))))
+         (cleared-floors (/ score org-ladder-art-points-per-step))
+         (floor (1+ cleared-floors))
+         (step-rem (mod score org-ladder-art-points-per-step))
+         (step-in-floor (/ step-rem 4))
+         (steps-per-floor 6)
+         (steps-left (- steps-per-floor step-in-floor))
+         (floors-per-relic (* org-ladder-art-steps-per-floor
+                              org-ladder-art-floors-per-relic))
+         (special-floor (* org-ladder-art-steps-per-floor
+                           (1+ (/ cleared-floors org-ladder-art-steps-per-floor))))
+         (allocs (org-ladder-art--allocations score))
+         (total-relics (length allocs))
+         (unlocked-count (cl-count-if
+                          (lambda (e) (>= (nth 1 e) org-ladder-art-relic-step))
+                          allocs))
+         (entry (org-ladder-art--active-entry allocs)))
+    (pcase-let* ((`(,key ,alloc ,item ,date ,idx) (or entry '(nil 0 nil nil 1)))
+                 (donep (>= alloc org-ladder-art-relic-step))
+                 (open-tiles (if donep 36
+                               (/ alloc (* org-ladder-art-points-per-step
+                                           org-ladder-art-steps-per-floor)))))
+      (list :score score
+            :total-steps cleared-floors
+            :cleared-floors cleared-floors
+            :floor floor
+            :step-in-floor step-in-floor
+            :step-rem step-rem
+            :points-per-step org-ladder-art-points-per-step
+            :steps-per-floor steps-per-floor
+            :steps-left steps-left
+            :special-floor special-floor
+            :open-tiles open-tiles
+            :unlocked-count unlocked-count
+            :total-relics total-relics
+            :relic-key key
+            :relic-floor (* floors-per-relic
+                            (1+ (/ cleared-floors floors-per-relic)))
+            :vine (vconcat (org-ladder-art--vine floor total-relics))
+            :relic-unlocked-p (and donep t)
+            :unlock-date date
+            ;; Never expose title or lore before all 36 tiles are unveiled!
+            :title (and donep item (plist-get item :title))
+            :lore (and donep item (plist-get item :lore))
+            :svg (and with-svg item
+                      (org-ladder-art--svg-string (or idx 1) item open-tiles))))))
+
+(defun org-ladder-art--render-buffer (ym-str score item &optional today-score unlock-date idx)
   "Render artifact ITEM for YM-STR according to SCORE and optional UNLOCK-DATE."
-  (let* ((max-score 4500.0)
-         (ratio (min 1.0 (/ (max 0.0 (float score)) max-score)))
-         (donep (>= score 4500))
+  (let* ((max-score (float org-ladder-art-relic-step))
+         (donep (>= score org-ladder-art-relic-step))
+         (open-n (if donep 36
+                   (/ score (* org-ladder-art-points-per-step
+                               org-ladder-art-steps-per-floor))))
+         (ratio (/ (float open-n) 36.0))
          (today-gain (and today-score (> today-score 0)
                           (* 100 (/ (float today-score) max-score))))
          (status (if donep
                      (format "RELIC RESTORED · %s%s"
                              ym-str
                              (if unlock-date (format " · %s 解锁" unlock-date) ""))
-                   (format "SIGNAL LOCK · %s  %s %.1f%%%s"
+                   (format "SIGNAL LOCK · %s  %s %d/36 格 (%.0f%%)%s"
                            ym-str
-                           (org-ladder--progress-bar (round (* ratio 36)) 36 10)
+                           (org-ladder--progress-bar open-n 36 12)
+                           open-n
                            (* 100 ratio)
                            (if today-gain (format " (+%.1f%% today)" today-gain) "")))))
     (insert (propertize (format "  %s\n" status)
@@ -156,51 +274,192 @@ the previous one reaches 4500.  Return list of (KEY ALLOC ITEM UNLOCK-DATE)."
              (require 'svg nil t))
         (progn
           (insert "  ")
-          (insert-image (org-ladder-art--render-svg ym-str item ratio))
+          (insert-image (org-ladder-art--render-svg (or idx 1) item open-n))
           (insert "\n"))
-      (org-ladder-art--render-tty ym-str ratio))
+      (org-ladder-art--render-tty (or idx 1) open-n))
     (if donep
         (insert (propertize (format "  【%s】 %s\n\n"
                                     (plist-get item :title)
                                     (plist-get item :lore))
                             'face '(:foreground "#E6DB74")))
-      (insert (propertize "  ??? UNKNOWN RELIC — 勘探进行中，继续积累以揭开迷雾。\n\n"
+      (insert (propertize "  ??? UNKNOWN RELIC — 每登顶 1 层 (24 分 = 6 卡)，每逢第 5 层破雾 1 格。\n\n"
                           'face '(:foreground "#75715E"))))))
 
+(defun org-ladder-art--vine-note (row)
+  "Return the optional right-hand note for vine ROW (`29/36', `#6', or \"\")."
+  (cond ((plist-get row :relic-done)
+         (format "  #%d" (plist-get row :relic)))
+        ((plist-get row :special)
+         (format "  %d/36" (plist-get row :tile)))
+        (t "")))
+
+(defun org-ladder-art-step-bar (step-in-floor &optional steps-per-floor)
+  "Render a 6-pip floor bar (`1 card = 1 pip')."
+  (org-ladder--progress-bar (or step-in-floor 0) (or steps-per-floor 6)
+                            (or steps-per-floor 6)))
+
+(defun org-ladder-art--insert-vine (st)
+  "Insert the vine ladder of climb state ST, highest floor first.
+Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked."
+  (let ((step (plist-get st :step-in-floor))
+        (per  (plist-get st :steps-per-floor)))
+    (dolist (row (append (plist-get st :vine) nil))
+      (let* ((status (plist-get row :status))
+             (specialp (plist-get row :special))
+             (relicp (plist-get row :relic-done))
+             (icon (cond ((equal status "current") "🧗")
+                         (relicp "🏆")
+                         (specialp "🏺")
+                         (t "·")))
+             (face (pcase status
+                     ("cleared" 'shadow)
+                     ("current" '(:foreground "#A6E22E" :weight bold))
+                     (_ (if (or relicp specialp)
+                            '(:foreground "#E6DB74")
+                          'default)))))
+        (insert "  "
+                (propertize icon 'face face)
+                (propertize " " 'display '(space :align-to 6))
+                (propertize
+                 (format "%4dF%s%s\n" (plist-get row :floor)
+                         (org-ladder-art--vine-note row)
+                         (if (equal status "current")
+                             (format "   %s %d/%d"
+                                     (org-ladder-art-step-bar step per)
+                                     step per)
+                           ""))
+                 'face face))))))
+
 (defun org-ladder-art-insert-current (&optional today-score)
-  "Insert the currently-excavating artifact (by cumulative score) at point."
-  (let* ((allocs   (org-ladder-art--allocations))
-         (restored (cl-count-if (lambda (e) (>= (nth 1 e) 4500)) allocs))
-         (entry    (org-ladder-art--active-entry)))
+  "Insert the fine-grained vine ladder and active artifact at point."
+  (let* ((st     (org-ladder-art-climb-state))
+         (floor  (plist-get st :floor))
+         (allocs (org-ladder-art--allocations (plist-get st :score)))
+         (entry  (org-ladder-art--active-entry allocs)))
+    (insert (propertize (format "🧗 通天藤蔓 · 第 %d 层\n" floor)
+                        'face '(:weight bold :height 1.2 :foreground "#A6E22E")))
+    (insert (propertize "  🧗当前 · ·普通层 · 🏺破雾(5F) · 🏆收集(180F)  (灰=已过)\n"
+                        'face 'shadow))
+    (org-ladder-art--insert-vine st)
+    ;; Accumulation: what has been earned so far, linking to the full gallery.
+    (insert (propertize (format "  🏅 已登 %d 层 · 已收集 %d/%d 件  "
+                                (plist-get st :cleared-floors)
+                                (plist-get st :unlocked-count)
+                                (length allocs))
+                        'face '(:foreground "#E6DB74"))
+            (buttonize "[🏛️ 遗迹陈列室]" (lambda (_) (org-ladder-art-gallery)))
+            "\n")
+    (when (< (plist-get st :unlocked-count) (plist-get st :total-relics))
+      (insert (propertize (format "  🏺 %dF 下次破雾 · 🏆 %dF 收集下一件遗物 (还差 %d 层)\n"
+                                  (plist-get st :special-floor)
+                                  (plist-get st :relic-floor)
+                                  (1+ (- (plist-get st :relic-floor) floor)))
+                          'face 'shadow)))
+    (insert "\n")
     (if entry
-        (pcase-let ((`(,ym-str ,alloc ,item ,date) entry))
-          (insert (format "  已完整发掘 %d/%d 件  " restored (length allocs))
-                  (buttonize "[🏛️ 查看遗迹陈列室]"
-                             (lambda (_) (org-ladder-art-gallery)))
-                  "\n")
-          (org-ladder-art--render-buffer ym-str alloc item today-score date))
+        (pcase-let ((`(,ym-str ,alloc ,item ,date ,idx) entry))
+          (org-ladder-art--render-buffer ym-str alloc item today-score date idx))
       (insert (format "  no artifact files in %s\n\n" org-ladder-art-directory)))))
 
 ;;;###autoload
 (defun org-ladder-art-gallery ()
   "Display the cumulative artifact gallery."
   (interactive)
-  (let ((allocs (org-ladder-art--allocations))
-        (total  (apply #'+ (mapcar #'cdr (org-ladder-calculate-scores))))
-        (buf    (get-buffer-create "*Org Ladder Gallery*")))
+  (let* ((total  (org-ladder-art--total-score))
+         (allocs (org-ladder-art--allocations total))
+         (buf    (get-buffer-create "*Org Ladder Gallery*")))
     (with-current-buffer buf
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert (propertize "🏛️ Org Ladder 遗迹陈列室\n"
                             'face '(:weight bold :height 1.3 :foreground "#66D9EF")))
-        (insert (format "按累计总分依次发掘（每件 4500，当前累计 %d），永不锁死残缺。\n\n" total))
+        (insert (format "按累计层数依次发掘（每件 180 层 / 36 特殊层 / %d 分，当前累计 %d 分），永不锁死残缺。\n\n"
+                        org-ladder-art-relic-step total))
         (dolist (entry allocs)
-          (pcase-let ((`(,ym-str ,alloc ,item ,date) entry))
+          (pcase-let ((`(,ym-str ,alloc ,item ,date ,idx) entry))
             (when (or (> alloc 0) (eq entry (car allocs)))
-              (org-ladder-art--render-buffer ym-str alloc item nil date))))
+              (org-ladder-art--render-buffer ym-str alloc item nil date idx))))
         (goto-char (point-min)))
       (special-mode)
       (pop-to-buffer buf))))
+
+(defun org-ladder-art--daily-timeline ()
+  "Return chronologically sorted list of (ISO-DATE BEFORE-SCORE AFTER-SCORE)."
+  (let ((days (sort (org-ladder-hash-to-alist (org-ladder--collect-daily))
+                    (lambda (a b) (value< (car a) (car b)))))
+        (acc (if (fboundp 'org-ladder-sm--card-bonus-score)
+                 (org-ladder-sm--card-bonus-score)
+               0))
+        out)
+    (dolist (d days (nreverse out))
+      (pcase-let ((`(,y ,m ,day) (car d))
+                  (before acc))
+        (setq acc (+ acc (cdr d)))
+        (push (list (format "%04d-%02d-%02d" y m day) before acc) out)))))
+
+(defun org-ladder-art--period-climb (timeline pred allocs)
+  "Summarize floor, fog, and relic gains across TIMELINE entries matching PRED."
+  (let ((matches (cl-remove-if-not (lambda (e) (funcall pred (car e))) timeline)))
+    (when matches
+      (let* ((s0 (nth 1 (car matches)))
+             (s1 (nth 2 (car (last matches))))
+             (f0 (/ s0 org-ladder-art-points-per-step))
+             (f1 (/ s1 org-ladder-art-points-per-step))
+             (df (- f1 f0))
+             (sp (* org-ladder-art-points-per-step org-ladder-art-steps-per-floor))
+             (dt (- (/ s1 sp) (/ s0 sp)))
+             (r0 (/ s0 org-ladder-art-relic-step))
+             (r1 (/ s1 org-ladder-art-relic-step))
+             (titles (cl-loop for i from r0 below (min r1 (length allocs))
+                              for item = (nth 2 (nth i allocs))
+                              when item collect (format "【%s】" (plist-get item :title)))))
+        (when (> df 0)
+          (list :floors df :from (1+ f0) :to (1+ f1)
+                :tiles dt :relics titles))))))
+
+(defun org-ladder-art-chronicle (&optional max-months)
+  "Return climb chronicle rows for Today, Last 7 Days, and recent months."
+  (let* ((timeline (org-ladder-art--daily-timeline))
+         (allocs   (org-ladder-art--allocations))
+         (now      (current-time))
+         (today    (format-time-string "%F" now))
+         (week-ago (format-time-string "%F" (time-subtract now (days-to-time 6))))
+         (yms      (seq-take
+                    (sort (seq-uniq (mapcar (lambda (e) (substring (car e) 0 7))
+                                            timeline))
+                          #'string>)
+                    (or max-months 12)))
+         rows)
+    (dolist (spec (append (list (cons "今日" (lambda (d) (equal d today)))
+                                (cons "近7天" (lambda (d) (not (string< d week-ago)))))
+                          (mapcar (lambda (ym)
+                                    (cons ym (lambda (d) (string-prefix-p ym d))))
+                                  yms)))
+      (when-let* ((c (org-ladder-art--period-climb timeline (cdr spec) allocs)))
+        (push (append (list :period (car spec)) c) rows)))
+    (nreverse rows)))
+
+(defun org-ladder-art-insert-chronicle (&optional max-months)
+  "Insert the floor and relic climb chronicle at point."
+  (when-let* ((rows (org-ladder-art-chronicle max-months)))
+    (insert (propertize "📅 攀登编年史\n" 'face '(:weight bold :height 1.2)))
+    (dolist (r rows)
+      (let ((relics (plist-get r :relics))
+            (tiles  (plist-get r :tiles)))
+        (insert (format "  %-8s " (plist-get r :period))
+                (propertize (format "+%3d 层" (plist-get r :floors))
+                            'face '(:foreground "#A6E22E" :weight bold))
+                (propertize (format "  (%dF → %dF)" (plist-get r :from) (plist-get r :to))
+                            'face 'shadow)
+                (cond (relics
+                       (propertize (format "  🏆 收集%s" (string-join relics " "))
+                                   'face '(:foreground "#E6DB74" :weight bold)))
+                      ((> tiles 0)
+                       (propertize (format "  🏺 破雾 %d" tiles)
+                                   'face '(:foreground "#66D9EF")))
+                      (t ""))
+                "\n")))
+    (insert "\n")))
 
 (provide 'org-ladder-art)
 ;;; org-ladder-art.el ends here
