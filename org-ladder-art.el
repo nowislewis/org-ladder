@@ -346,9 +346,7 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
              (face (pcase status
                      ("cleared" 'shadow)
                      ("current" '(:foreground "#A6E22E" :weight bold))
-                     (_ (cond (relicp tface)
-                              (specialp '(:foreground "#66D9EF"))
-                              (t 'default))))))
+                     (_ (if relicp tface 'default)))))
         (insert "  "
                 (propertize icon 'face face)
                 (propertize " " 'display '(space :align-to 6))
