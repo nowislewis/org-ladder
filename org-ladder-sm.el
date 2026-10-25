@@ -62,62 +62,70 @@ live on each scan instead of captured as a stale snapshot."
   "Regexp matching an org-sm LOGBOOK review line.
 Group 1 = kind, Group 2 = middle text, Group 3 = YYYY-MM-DD.")
 
-(defun org-ladder-sm--scan-file (file tbl)
-  "Scan all LOGBOOK blocks in FILE; accumulate day-key scores into TBL."
-  (org-ladder-call-with-file
-   file
-   (lambda ()
-     (let ((case-fold-search nil))
-       (while (re-search-forward "^:LOGBOOK:" nil t)
-         (let* ((lb-start (point))
-                (lb-end   (save-excursion
-                            (re-search-forward "^:END:" nil t))))
-           (when lb-end
-             (save-excursion
-               (goto-char lb-start)
-               (while (re-search-forward org-ladder-sm--review-re lb-end t)
-                 (let ((rest (match-string 2))
-                       (key  (org-ladder-time-parse-iso (match-string 3))))
-                   (when (and key
-                              (not (string-match-p
-                                    "\\`[ \t]+\\(?:postpone\\|explain\\)\\b"
-                                    rest)))
-                     (puthash key
-                              (+ (gethash key tbl 0)
-                                 org-ladder-sm-score-per-review)
-                              tbl))))))))))))
-
-(defun org-ladder-sm--count-cards-in-file (file)
-  "Count `:SRS_TYPE: topic|cloze' entries in FILE."
-  (let ((count 0))
+(defun org-ladder-sm--scan-file (file &optional tbl)
+  "Scan FILE: add LOGBOOK scores to TBL and return card count."
+  (let ((cards 0))
     (org-ladder-call-with-file
      file
      (lambda ()
+       (when tbl
+         (let ((case-fold-search nil))
+           (while (re-search-forward "^:LOGBOOK:" nil t)
+             (let* ((lb-start (point))
+                    (lb-end   (save-excursion
+                                (re-search-forward "^:END:" nil t))))
+               (when lb-end
+                 (save-excursion
+                   (goto-char lb-start)
+                   (while (re-search-forward org-ladder-sm--review-re lb-end t)
+                     (let ((rest (match-string 2))
+                           (key  (org-ladder-time-parse-iso (match-string 3))))
+                       (when (and key
+                                  (not (string-match-p
+                                        "\\`[ \t]+\\(?:postpone\\|explain\\)\\b"
+                                        rest)))
+                         (puthash key
+                                  (+ (gethash key tbl 0)
+                                     org-ladder-sm-score-per-review)
+                                  tbl))))))))))
+       (goto-char (point-min))
        (let ((case-fold-search t))
          (while (re-search-forward "^[ \t]*:SRS_TYPE:[ \t]+\\(topic\\|cloze\\)\\b" nil t)
-           (setq count (1+ count))))))
-    count))
+           (setq cards (1+ cards))))))
+    cards))
+
+(defvar org-ladder-sm--card-bonus-cache nil
+  "Cached (FILES-SPEC . SCORE) for `org-ladder-sm--card-bonus-score'.")
 
 (defun org-ladder-sm--card-bonus-score ()
   "Return cumulative base score from all cards (`4 * card-count')."
-  (let ((total-cards 0))
-    (dolist (file (org-ladder-sm--files))
-      (when (file-exists-p file)
-        (condition-case err
-            (setq total-cards (+ total-cards (org-ladder-sm--count-cards-in-file file)))
-          (error (message "org-ladder-sm: error counting cards in %s: %s"
-                          file (error-message-string err))))))
-    (* total-cards org-ladder-sm-score-per-review)))
+  (org-ladder-calculate-scores)
+  (if (and org-ladder-sm--card-bonus-cache
+           (equal org-ladder-sm-files (car org-ladder-sm--card-bonus-cache)))
+      (cdr org-ladder-sm--card-bonus-cache)
+    (let ((total-cards 0))
+      (dolist (file (org-ladder-sm--files))
+        (when (file-exists-p file)
+          (condition-case err
+              (setq total-cards (+ total-cards (org-ladder-sm--scan-file file)))
+            (error (message "org-ladder-sm: error counting cards in %s: %s"
+                            file (error-message-string err))))))
+      (let ((score (* total-cards org-ladder-sm-score-per-review)))
+        (setq org-ladder-sm--card-bonus-cache (cons org-ladder-sm-files score))
+        score))))
 
 (defun org-ladder-sm--collect ()
   "Return ((day-key . score) ...) from all org-sm review LOGBOOK entries."
-  (let ((tbl (make-hash-table :test 'equal)))
+  (let ((tbl (make-hash-table :test 'equal))
+        (total-cards 0))
     (dolist (file (org-ladder-sm--files))
       (when (file-exists-p file)
         (condition-case err
-            (org-ladder-sm--scan-file file tbl)
+            (setq total-cards (+ total-cards (org-ladder-sm--scan-file file tbl)))
           (error (message "org-ladder-sm: error in %s: %s"
                           file (error-message-string err))))))
+    (setq org-ladder-sm--card-bonus-cache
+          (cons org-ladder-sm-files (* total-cards org-ladder-sm-score-per-review)))
     (org-ladder-hash-to-alist tbl)))
 
 (with-eval-after-load 'org-ladder
@@ -206,12 +214,14 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
 (defun org-ladder-sm--climb-line ()
   "Return the floor and 6-pip progress bar for the review header line."
   (ignore-errors
-    (let ((st (org-ladder-art-climb-state)))
-      (concat (propertize (format "🧗 %dF" (plist-get st :floor))
+    (let* ((score (org-ladder-art--total-score))
+           (step  org-ladder-art-points-per-step)
+           (floor (1+ (/ score step)))
+           (pips  (/ (mod score step) 4)))
+      (concat (propertize (format "🧗 %dF" floor)
                           'face '(:foreground "#A6E22E" :weight bold))
               " "
-              (org-ladder-art-step-bar (plist-get st :step-in-floor)
-                                       (plist-get st :steps-per-floor))))))
+              (org-ladder-art-step-bar pips 6)))))
 
 (defun org-ladder-sm-prompt (state)
   "Present climb bar and card badge in `header-line', context tree in HUD."
@@ -236,7 +246,10 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
 
 (defun org-ladder-sm--on-card-change (event)
   "Invalidate derived score caches and refresh active HUD on card edits."
-  (setq org-ladder--cache nil org-ladder--daily-cache nil org-ladder--cache-time nil)
+  (setq org-ladder--cache nil
+        org-ladder--daily-cache nil
+        org-ladder--cache-time nil
+        org-ladder-sm--card-bonus-cache nil)
   (when (and (fboundp 'org-sm--current-review-card-p)
              (org-sm--current-review-card-p))
     (when (eq (plist-get event :action) 'extract)
