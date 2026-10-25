@@ -290,7 +290,7 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
                        (if (and s0 (> (or new 0) 0) (not (equal s0 s1)))
                            (format "%s → %s" s0 s1)
                          s1))))
-            ('postpone "⏳")
+            ((or 'reschedule 'postpone) "⏳")
             (_ (if (fboundp 'org-sm-default-feedback)
                    (org-sm-default-feedback event)
                  (format "%s" action))))))
