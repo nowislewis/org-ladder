@@ -244,7 +244,9 @@ With prefix argument MONTHS, also expand top deepest Clozes."
         (when-let* ((log (bound-and-true-p org-ladder-sm-last-log)))
           (insert (propertize (format "🔥 上次战报 (%d 张)\n" (length log))
                               'face '(:weight bold :height 1.2))
-                  (propertize "  🌱幼苗 🌿成株 🌲常青 🗿古树 ⛰️远古 │ 🐣菜鸡 🐱小猫 🐯老虎 👹魔王 │ 🏆击败 ✨新卡\n"
+                  (propertize (concat "  🌱幼苗 · 🌿成株 · 🌲常青 · 🗿古树 · ⛰️远古\n"
+                                      "  🐣菜鸡 · 🐱小猫 · 🐯老虎 · 👹魔王\n"
+                                      "  🏆击败 · ✨新卡\n")
                               'face 'shadow))
           (let ((counts (make-hash-table :test 'equal))
                 order)

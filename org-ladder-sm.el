@@ -217,8 +217,11 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
     (let* ((score (org-ladder-art--total-score))
            (step  org-ladder-art-points-per-step)
            (floor (1+ (/ score step)))
-           (pips  (/ (mod score step) 4)))
-      (concat (propertize (format "🧗 %dF" floor) 'face 'bold)
+           (pips  (/ (mod score step) 4))
+           (mark  (cond ((zerop (mod floor 180)) " 🏆")
+                        ((zerop (mod floor 5))   " 🏺")
+                        (t ""))))
+      (concat (propertize (format "🧗 %dF%s" floor mark) 'face 'bold)
               " "
               (org-ladder-art-step-bar pips 6)))))
 
