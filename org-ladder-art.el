@@ -347,7 +347,8 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color highlights only active d
                 (cond ((equal status "current")
                        (concat "   🧗 " (org-ladder-art-step-bar step per)
                                (if (> todayf 0)
-                                   (concat (propertize "  今日 " 'face 'shadow)
+                                   (concat "  🎉 "
+                                           (propertize "今日 " 'face 'shadow)
                                            (propertize (format "+%d" todayf) 'face sface)
                                            (propertize " 层" 'face 'shadow))
                                  "")))
