@@ -253,29 +253,20 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
             :svg (and with-svg item
                       (org-ladder-art--svg-string (or idx 1) item open-tiles))))))
 
-(defun org-ladder-art--render-buffer (ym-str score item &optional today-score unlock-date idx)
+(defun org-ladder-art--render-buffer (ym-str score item &optional _today-score unlock-date idx)
   "Render artifact ITEM for YM-STR according to SCORE and optional UNLOCK-DATE."
-  (let* ((max-score (float org-ladder-art-relic-step))
-         (donep (>= score org-ladder-art-relic-step))
+  (let* ((donep  (>= score org-ladder-art-relic-step))
          (open-n (if donep 36
                    (/ score (* org-ladder-art-points-per-step
                                org-ladder-art-steps-per-floor))))
-         (ratio (/ (float open-n) 36.0))
-         (today-gain (and today-score (> today-score 0)
-                          (* 100 (/ (float today-score) max-score))))
          (status (if donep
-                     (format "RELIC RESTORED · %s%s"
-                             ym-str
-                             (if unlock-date (format " · %s 解锁" unlock-date) ""))
-                   (format "SIGNAL LOCK · %s  %s %d/36 格 (%.0f%%)%s"
-                           ym-str
-                           (org-ladder--progress-bar open-n 36 12)
-                           open-n
-                           (* 100 ratio)
-                           (if today-gain (format " (+%.1f%% today)" today-gain) "")))))
+                     (format "%s · 已解锁%s"
+                             ym-str (if unlock-date (format " (%s)" unlock-date) ""))
+                   (format "%s · 破雾 %d/36 格 (%.0f%%)"
+                           ym-str open-n (* 100 (/ (float open-n) 36.0))))))
     (insert (propertize (format "  %s\n" status)
-                        'face (if donep '(:foreground "#E6DB74" :weight bold)
-                                '(:foreground "#75715E"))))
+                        'face (if donep '(:foreground "#FFB86C" :weight bold)
+                                'shadow)))
     (if (and (display-graphic-p)
              (image-type-available-p 'svg)
              (require 'svg nil t))
@@ -288,9 +279,8 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
         (insert (propertize (format "  【%s】 %s\n\n"
                                     (plist-get item :title)
                                     (plist-get item :lore))
-                            'face '(:foreground "#E6DB74")))
-      (insert (propertize "  ??? UNKNOWN RELIC — 每登顶 1 层 (24 分 = 6 卡)，每逢第 5 层破雾 1 格。\n\n"
-                          'face '(:foreground "#75715E"))))))
+                            'face '(:foreground "#FFB86C")))
+      (insert "\n"))))
 
 (defun org-ladder-art--vine-note (row)
   "Return the optional right-hand note for vine ROW."
@@ -370,16 +360,14 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
          (allocs (org-ladder-art--allocations (plist-get st :score)))
          (entry  (org-ladder-art--active-entry allocs)))
     (insert (propertize (format "🧗 通天藤蔓 · 第 %d 层\n" floor)
-                        'face '(:weight bold :height 1.2 :foreground "#A6E22E")))
-    (insert (propertize "  🧗当前 · ·普通层 · 🏺破雾(5F) · 🏆收集(180F)  (灰=已过)\n"
-                        'face 'shadow))
+                        'face '(:weight bold :height 1.2)))
     (org-ladder-art--insert-vine st)
     ;; Accumulation: what has been earned so far, linking to the full gallery.
     (insert (propertize (format "  🏅 已登 %d 层 · 已收集 %d/%d 件  "
                                 (plist-get st :cleared-floors)
                                 (plist-get st :unlocked-count)
                                 (length allocs))
-                        'face '(:foreground "#E6DB74"))
+                        'face 'shadow)
             (buttonize "[🏛️ 遗迹陈列室]" (lambda (_) (org-ladder-art-gallery)))
             "\n\n")
     (if entry
@@ -479,10 +467,10 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
                             'face 'shadow)
                 (cond (relics
                        (propertize (format "  🏆 收集%s" (string-join relics " "))
-                                   'face '(:foreground "#E6DB74" :weight bold)))
+                                   'face '(:foreground "#FFB86C" :weight bold)))
                       ((> tiles 0)
                        (propertize (format "  🏺 破雾 %d" tiles)
-                                   'face '(:foreground "#66D9EF")))
+                                   'face 'shadow))
                       (t ""))
                 "\n")))
     (insert "\n")))
