@@ -156,27 +156,27 @@
                 (should (equal header-line-format
                                (list org-sm--header-line-construct '(:eval "crumb"))))
                 (should (equal org-sm--header-line
-                               "🧗 2F [█░░░░░] · [1/2] · 🐯 老虎"))
+                               "🧗 2F ■ □ □ □ □ □ · [1/2] · 🐯 老虎"))
                 (should (equal org-ladder-notify-last-text
                                "├─ Boss ◀\n  └─ Memory"))
                 ;; Extracting a child card adds +4 pts (2/6 pips) and updates tree:
                 (org-sm-extract 'topic "sub" 0 3)
                 (should (equal org-sm--header-line
-                               "🧗 2F [██░░░░] · [1/2] · 🐯 老虎 · ✓ ✨"))
+                               "🧗 2F ■ ■ □ □ □ □ · [1/2] · 🐯 老虎 · ✓ ✨"))
                 (should (equal org-ladder-notify-last-text
                                "├─ Boss ◀\n  ├─ Memory\n  └─ [T] sub"))
                 ;; Dismissing Boss adds +4 pts (3/6 pips) and advances to Memory:
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
                 (should (equal org-sm--header-line
-                               "🧗 2F [███░░░] · [2/2] · 🌱 幼苗 · ✓ 🏆 🐯"))
+                               "🧗 2F ■ ■ ■ □ □ □ · [2/2] · 🌱 幼苗 · ✓ 🏆 🐯"))
                 (should (equal org-ladder-notify-last-text
                                "▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
                 (should (equal org-sm--header-line
-                               "🧗 2F [███░░░] · [2/2] · 🌱 幼苗"))
+                               "🧗 2F ■ ■ ■ □ □ □ · [2/2] · 🌱 幼苗"))
                 (should (equal org-ladder-notify-last-text
                                "▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub"))
                 (cl-letf (((symbol-function 'read-multiple-choice)

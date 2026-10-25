@@ -294,13 +294,14 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
         (t "")))
 
 (defun org-ladder-art-step-bar (step-in-floor &optional steps-per-floor)
-  "Render a 6-pip floor bar (`1 card = 1 pip')."
+  "Render a 6-pip floor bar (`1 card = 1 pip') as spaced `■'/`□' pips."
   (let* ((total  (max 1 (or steps-per-floor 6)))
-         (filled (max 0 (min total (or step-in-floor 0)))))
-    (concat (propertize "[" 'face 'shadow)
-            (propertize (make-string filled ?█) 'face '(:foreground "#A6E22E"))
-            (propertize (concat (make-string (- total filled) ?░) "]")
-                        'face 'shadow))))
+         (filled (max 0 (min total (or step-in-floor 0))))
+         (done   (propertize "■" 'face '(:foreground "#A6E22E")))
+         (todo   (propertize "□" 'face 'shadow)))
+    (string-join (cl-loop for i below total
+                          collect (if (< i filled) done todo))
+                 " ")))
 
 (defun org-ladder-art--insert-vine (st)
   "Insert the vine ladder of climb state ST, highest floor first.
