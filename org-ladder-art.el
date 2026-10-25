@@ -200,7 +200,13 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
 1 floor = 24 pts (6 cards, 4 pts per pip); every 5th floor = special floor
 \(+1 fog tile = 120 pts); 1 relic = 180 floors (36 special floors = 4,320 pts)."
   (let* ((score (max 0 (or total-score (org-ladder-art--total-score))))
+         (today-score (if total-score 0
+                        (gethash (org-ladder-time-today)
+                                 (org-ladder--collect-daily) 0)))
          (cleared-floors (/ score org-ladder-art-points-per-step))
+         (today-floors (- cleared-floors
+                          (/ (max 0 (- score today-score))
+                             org-ladder-art-points-per-step)))
          (floor (1+ cleared-floors))
          (step-rem (mod score org-ladder-art-points-per-step))
          (step-in-floor (/ step-rem 4))
@@ -224,6 +230,7 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
       (list :score score
             :total-steps cleared-floors
             :cleared-floors cleared-floors
+            :today-floors today-floors
             :floor floor
             :step-in-floor step-in-floor
             :step-rem step-rem
@@ -286,11 +293,11 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
                           'face '(:foreground "#75715E"))))))
 
 (defun org-ladder-art--vine-note (row)
-  "Return the optional right-hand note for vine ROW (`29/36', `#6', or \"\")."
+  "Return the optional right-hand note for vine ROW."
   (cond ((plist-get row :relic-done)
-         (format "  #%d" (plist-get row :relic)))
+         (format "   遗物 #%d" (plist-get row :relic)))
         ((plist-get row :special)
-         (format "  %d/36" (plist-get row :tile)))
+         (format "   破雾 %d/36" (plist-get row :tile)))
         (t "")))
 
 (defun org-ladder-art-step-bar (step-in-floor &optional steps-per-floor)
@@ -306,22 +313,23 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
 (defun org-ladder-art--insert-vine (st)
   "Insert the vine ladder of climb state ST, highest floor first.
 Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked."
-  (let* ((floor (plist-get st :floor))
-         (step  (plist-get st :step-in-floor))
-         (per   (plist-get st :steps-per-floor))
-         (vine  (append (plist-get st :vine) nil))
-         (top   (or (plist-get (car vine) :floor) floor))
-         (rf    (plist-get st :relic-floor))
-         (morep (< (plist-get st :unlocked-count) (plist-get st :total-relics)))
-         (left  (and rf (1+ (- rf floor)))))
+  (let* ((floor  (plist-get st :floor))
+         (step   (plist-get st :step-in-floor))
+         (per    (plist-get st :steps-per-floor))
+         (todayf (or (plist-get st :today-floors) 0))
+         (vine   (append (plist-get st :vine) nil))
+         (top    (or (plist-get (car vine) :floor) floor))
+         (rf     (plist-get st :relic-floor))
+         (morep  (< (plist-get st :unlocked-count) (plist-get st :total-relics)))
+         (left   (and rf (1+ (- rf floor))))
+         (tface  '(:foreground "#FFB86C" :weight bold)))
     (when (and morep rf (> rf top))
       (insert "  "
-              (propertize "🏆" 'face '(:foreground "#E6DB74"))
+              (propertize "🏆" 'face tface)
               (propertize " " 'display '(space :align-to 6))
-              (propertize (format "%4dF  #%d"
-                                  rf (1+ (plist-get st :unlocked-count)))
-                          'face '(:foreground "#E6DB74"))
-              (propertize (format "  (还差 %d 层)\n" left) 'face 'shadow))
+              (propertize (format "%4dF   遗物 #%d · 还差 %d 层\n"
+                                  rf (1+ (plist-get st :unlocked-count)) left)
+                          'face tface))
       (when (> (1- rf) top)
         (insert "  "
                 (propertize "⋮" 'face 'shadow)
@@ -338,9 +346,9 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
              (face (pcase status
                      ("cleared" 'shadow)
                      ("current" '(:foreground "#A6E22E" :weight bold))
-                     (_ (if (or relicp specialp)
-                            '(:foreground "#E6DB74")
-                          'default)))))
+                     (_ (cond (relicp tface)
+                              (specialp '(:foreground "#66D9EF"))
+                              (t 'default))))))
         (insert "  "
                 (propertize icon 'face face)
                 (propertize " " 'display '(space :align-to 6))
@@ -348,11 +356,12 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
                  (format "%4dF%s%s\n" (plist-get row :floor)
                          (org-ladder-art--vine-note row)
                          (cond ((equal status "current")
-                                (format "   %s %d/%d"
-                                        (org-ladder-art-step-bar step per)
-                                        step per))
+                                (concat "   " (org-ladder-art-step-bar step per)
+                                        (if (> todayf 0)
+                                            (format "  今日 +%d 层" todayf)
+                                          "")))
                                ((and relicp morep (> left 0))
-                                (format "  (还差 %d 层)" left))
+                                (format " · 还差 %d 层" left))
                                (t "")))
                  'face face))))))
 
