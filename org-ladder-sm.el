@@ -218,8 +218,7 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
            (step  org-ladder-art-points-per-step)
            (floor (1+ (/ score step)))
            (pips  (/ (mod score step) 4)))
-      (concat (propertize (format "🧗 %dF" floor)
-                          'face '(:foreground "#A6E22E" :weight bold))
+      (concat (propertize (format "🧗 %dF" floor) 'face 'bold)
               " "
               (org-ladder-art-step-bar pips 6)))))
 
