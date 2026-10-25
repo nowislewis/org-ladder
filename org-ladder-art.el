@@ -306,9 +306,28 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
 (defun org-ladder-art--insert-vine (st)
   "Insert the vine ladder of climb state ST, highest floor first.
 Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked."
-  (let ((step (plist-get st :step-in-floor))
-        (per  (plist-get st :steps-per-floor)))
-    (dolist (row (append (plist-get st :vine) nil))
+  (let* ((floor (plist-get st :floor))
+         (step  (plist-get st :step-in-floor))
+         (per   (plist-get st :steps-per-floor))
+         (vine  (append (plist-get st :vine) nil))
+         (top   (or (plist-get (car vine) :floor) floor))
+         (rf    (plist-get st :relic-floor))
+         (morep (< (plist-get st :unlocked-count) (plist-get st :total-relics)))
+         (left  (and rf (1+ (- rf floor)))))
+    (when (and morep rf (> rf top))
+      (insert "  "
+              (propertize "🏆" 'face '(:foreground "#E6DB74"))
+              (propertize " " 'display '(space :align-to 6))
+              (propertize (format "%4dF  #%d"
+                                  rf (1+ (plist-get st :unlocked-count)))
+                          'face '(:foreground "#E6DB74"))
+              (propertize (format "  (还差 %d 层)\n" left) 'face 'shadow))
+      (when (> (1- rf) top)
+        (insert "  "
+                (propertize "⋮" 'face 'shadow)
+                (propertize " " 'display '(space :align-to 6))
+                (propertize "   ...\n" 'face 'shadow))))
+    (dolist (row vine)
       (let* ((status (plist-get row :status))
              (specialp (plist-get row :special))
              (relicp (plist-get row :relic-done))
@@ -328,11 +347,13 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
                 (propertize
                  (format "%4dF%s%s\n" (plist-get row :floor)
                          (org-ladder-art--vine-note row)
-                         (if (equal status "current")
-                             (format "   %s %d/%d"
-                                     (org-ladder-art-step-bar step per)
-                                     step per)
-                           ""))
+                         (cond ((equal status "current")
+                                (format "   %s %d/%d"
+                                        (org-ladder-art-step-bar step per)
+                                        step per))
+                               ((and relicp morep (> left 0))
+                                (format "  (还差 %d 层)" left))
+                               (t "")))
                  'face face))))))
 
 (defun org-ladder-art-insert-current (&optional today-score)
@@ -353,14 +374,7 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color shows cleared vs locked.
                                 (length allocs))
                         'face '(:foreground "#E6DB74"))
             (buttonize "[🏛️ 遗迹陈列室]" (lambda (_) (org-ladder-art-gallery)))
-            "\n")
-    (when (< (plist-get st :unlocked-count) (plist-get st :total-relics))
-      (insert (propertize (format "  🏺 %dF 下次破雾 · 🏆 %dF 收集下一件遗物 (还差 %d 层)\n"
-                                  (plist-get st :special-floor)
-                                  (plist-get st :relic-floor)
-                                  (1+ (- (plist-get st :relic-floor) floor)))
-                          'face 'shadow)))
-    (insert "\n")
+            "\n\n")
     (if entry
         (pcase-let ((`(,ym-str ,alloc ,item ,date ,idx) entry))
           (org-ladder-art--render-buffer ym-str alloc item today-score date idx))
