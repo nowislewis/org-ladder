@@ -283,11 +283,11 @@ Return list of (KEY ALLOC ITEM UNLOCK-DATE INDEX)."
       (insert "\n"))))
 
 (defun org-ladder-art--vine-note (row)
-  "Return the optional right-hand note for vine ROW."
+  "Return the optional right-hand note for vine ROW (`29/36', `#6', or \"\")."
   (cond ((plist-get row :relic-done)
-         (format "   遗物 #%d" (plist-get row :relic)))
+         (format "   #%d" (plist-get row :relic)))
         ((plist-get row :special)
-         (format "   破雾 %d/36" (plist-get row :tile)))
+         (format "   %d/36" (plist-get row :tile)))
         (t "")))
 
 (defun org-ladder-art-step-bar (step-in-floor &optional steps-per-floor)
@@ -317,7 +317,7 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color highlights only active d
     (when (and morep rf (> rf top))
       (insert "  🏆"
               (propertize " " 'display '(space :align-to 6))
-              (propertize (format "%4dF   遗物 #%d · "
+              (propertize (format "%4dF   #%d · "
                                   rf (1+ (plist-get st :unlocked-count)))
                           'face 'bold)
               (propertize (format "还差 %d 层\n" left) 'face gface))
@@ -330,8 +330,7 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color highlights only active d
       (let* ((status (plist-get row :status))
              (specialp (plist-get row :special))
              (relicp (plist-get row :relic-done))
-             (icon (cond ((equal status "current") "🧗")
-                         (relicp "🏆")
+             (icon (cond (relicp "🏆")
                          (specialp "🏺")
                          (t "·")))
              (face (pcase status
@@ -346,7 +345,7 @@ Symbols show floor type (`·' / `🏺' / `🏆'); color highlights only active d
                                     (org-ladder-art--vine-note row))
                             'face face)
                 (cond ((equal status "current")
-                       (concat "   " (org-ladder-art-step-bar step per)
+                       (concat "   🧗 " (org-ladder-art-step-bar step per)
                                (if (> todayf 0)
                                    (concat (propertize "  今日 " 'face 'shadow)
                                            (propertize (format "+%d" todayf) 'face sface)
