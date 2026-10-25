@@ -30,6 +30,7 @@
 (defvar org-sm-web-hud-function)
 (defvar org-sm-web-badge-function)
 (declare-function org-sm-default-feedback "org-sm")
+(declare-function org-sm-set-header-line "org-sm")
 (declare-function org-sm--current-review-card-p "org-sm")
 (declare-function org-sm--show-prompt "org-sm")
 
@@ -203,31 +204,35 @@ When ACTIVE-TAG is non-nil, append it after `◀' on the current card line."
       (propertize (format "✓ %s" prev) 'face 'success))))
 
 (defun org-ladder-sm--climb-line ()
-  "Return a quiet peripheral climb line for the review HUD, or nil."
+  "Return the floor and 6-pip progress bar for the review header line."
   (ignore-errors
     (let ((st (org-ladder-art-climb-state)))
-      (format "🧗 %dF %s"
-              (plist-get st :floor)
+      (concat (propertize (format "🧗 %dF" (plist-get st :floor))
+                          'face '(:foreground "#A6E22E" :weight bold))
+              " "
               (org-ladder-art-step-bar (plist-get st :step-in-floor)
                                        (plist-get st :steps-per-floor))))))
 
 (defun org-ladder-sm-prompt (state)
-  "Present current card STATE in the bottom-right HUD with context tree."
+  "Present climb bar and card badge in `header-line', context tree in HUD."
   (let* ((card    (plist-get state :card))
          (raw-pos (or (plist-get state :position) "SM"))
          (pos     (if (string-match "\\([0-9]+/[0-9]+\\)" raw-pos)
                       (format "[%s]" (match-string 1 raw-pos))
                     (format "[%s]" raw-pos)))
-         (hdr     (format "%s %s" (org-ladder-sm-banner card) pos))
-         (tree    (org-ladder-sm--context-tree))
          (climb   (org-ladder-sm--climb-line))
-         (body    (string-join (delq nil (list tree (and climb (propertize climb 'face 'shadow))))
-                               "\n"))
+         (banner  (org-ladder-sm-banner card))
+         (prev    (org-ladder-sm--format-prev (plist-get state :prev)))
+         (header  (string-join (delq nil (list climb pos banner prev)) " · "))
+         (tree    (org-ladder-sm--context-tree))
          (keys    (and (fboundp 'org-sm-review-keys-hint)
                        (org-sm-review-keys-hint))))
-    (if (org-ladder-notify body :title hdr)
-        (message "%s" (string-join (delq nil (list hdr keys)) "  |  "))
-      (when keys (message "%s" keys)))))
+    (when (fboundp 'org-sm-set-header-line)
+      (org-sm-set-header-line header))
+    (if tree
+        (org-ladder-notify tree)
+      (org-ladder-notify-close))
+    (when keys (message "%s" keys))))
 
 (defun org-ladder-sm--on-card-change (event)
   "Invalidate derived score caches and refresh active HUD on card edits."

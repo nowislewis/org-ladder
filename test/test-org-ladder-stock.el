@@ -123,21 +123,24 @@
 (ert-deftest org-ladder-sm-review-flow-integration ()
   "Exercise review presentation, grading and stopping on disposable cards."
   (require 'org-sm)
-  (let ((buffer (generate-new-buffer " *org-sm-flow*"))
-        (org-ladder-stock-files nil)
-        (org-ladder-sm-files nil)
-        (org-sm--queue nil)
-        (org-sm--current-buffer nil)
-        (org-sm--current-card-marker nil)
-        (org-sm-prompt-function #'org-ladder-sm-prompt)
-        (org-sm-feedback-function #'org-ladder-sm-feedback)
-        (org-sm-finish-function #'org-ladder-sm-bonfire)
-        (org-sm-review-start-hook '(org-ladder-sm--reset-session))
-        (org-sm-after-card-change-functions '(org-ladder-sm--on-card-change)))
+  (let* ((file (make-temp-file "org-sm-flow-" nil ".org"))
+         (buffer (find-file-noselect file))
+         (org-ladder-stock-files (list file))
+         (org-ladder-sm-files (list file))
+         (org-sm--queue nil)
+         (org-sm--current-buffer nil)
+         (org-sm--current-card-marker nil)
+         (org-sm-prompt-function #'org-ladder-sm-prompt)
+         (org-sm-feedback-function #'org-ladder-sm-feedback)
+         (org-sm-finish-function #'org-ladder-sm-bonfire)
+         (org-sm-review-start-hook '(org-ladder-sm--reset-session))
+         (org-sm-after-card-change-functions '(org-ladder-sm--on-card-change)))
     (unwind-protect
         (save-window-excursion
           (with-current-buffer buffer
             (org-mode)
+            ;; Simulate an active breadcrumb-local-mode header line to verify coexistence.
+            (setq-local header-line-format '((:eval "crumb")))
             (insert "* Boss\n:PROPERTIES:\n:SRS_TYPE: topic\n:END:\n:LOGBOOK:\n")
             (dotimes (_ 5) (insert "- topic a=1.5 [2026-10-01 Thu]\n"))
             (insert ":END:\nsub\n** Memory\n:PROPERTIES:\n:SRS_TYPE: cloze\n:END:\n{{answer}}\n")
@@ -147,24 +150,35 @@
               ;; Batch Emacs has no redisplay geometry; all other presentation
               ;; and queue operations use their real implementations.
               (cl-letf (((symbol-function 'recenter) #'ignore))
+                ;; Initial score: 2 cards (8) + 5 reviews (20) = 28 pts -> 2F, 1/6 pips.
                 (org-sm--review-markers (list boss cloze))
                 (should (org-sm--current-review-card-p))
-                (should-not (local-variable-p 'header-line-format))
+                (should (equal header-line-format
+                               (list org-sm--header-line-construct '(:eval "crumb"))))
+                (should (equal org-sm--header-line
+                               "🧗 2F [█░░░░░] · [1/2] · 🐯 老虎"))
                 (should (equal org-ladder-notify-last-text
-                               "🐯 老虎 [1/2]\n├─ Boss ◀\n  └─ Memory\n🧗 1F [░░░░░░]"))
-                ;; Extracting a child card while reviewing updates the Boss HUD immediately:
+                               "├─ Boss ◀\n  └─ Memory"))
+                ;; Extracting a child card adds +4 pts (2/6 pips) and updates tree:
                 (org-sm-extract 'topic "sub" 0 3)
+                (should (equal org-sm--header-line
+                               "🧗 2F [██░░░░] · [1/2] · 🐯 老虎 · ✓ ✨"))
                 (should (equal org-ladder-notify-last-text
-                               "🐯 老虎 [1/2]\n├─ Boss ◀\n  ├─ Memory\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
+                               "├─ Boss ◀\n  ├─ Memory\n  └─ [T] sub"))
+                ;; Dismissing Boss adds +4 pts (3/6 pips) and advances to Memory:
                 (org-sm-item-dismiss)
                 (should (eq org-sm--cloze-state 'hidden))
+                (should (equal org-sm--header-line
+                               "🧗 2F [███░░░] · [2/2] · 🌱 幼苗 · ✓ 🏆 🐯"))
                 (should (equal org-ladder-notify-last-text
-                               "🌱 幼苗 [2/2]\n▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
+                               "▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub"))
                 (should (buffer-narrowed-p))
                 (org-sm-review-confirm)
                 (should (eq org-sm--cloze-state 'revealed))
+                (should (equal org-sm--header-line
+                               "🧗 2F [███░░░] · [2/2] · 🌱 幼苗"))
                 (should (equal org-ladder-notify-last-text
-                               "🌱 幼苗 [2/2]\n▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub\n🧗 1F [░░░░░░]"))
+                               "▸ Boss\n  ├─ Memory ◀\n  └─ [T] sub"))
                 (cl-letf (((symbol-function 'read-multiple-choice)
                            (lambda (&rest _) '(?r "good"))))
                   (org-sm-review-confirm))
@@ -175,6 +189,10 @@
                 (with-current-buffer "*Org Ladder*"
                   (should (string-match-p "🔥 上次战报 (3 张)" (buffer-string))))
                 (should-not (buffer-narrowed-p))
+                ;; Breadcrumb construct remains intact after review cleanup:
+                (should (equal header-line-format '((:eval "crumb"))))
+                (should-not org-sm--header-line)
+                (should-not org-ladder-notify-last-text)
                 (should-not org-sm--current-card-marker)
                 (should-not org-sm--cloze-state)
                 (goto-char boss)
@@ -182,11 +200,15 @@
                 (org-sm--review-markers (list (copy-marker boss)))
                 (org-sm-review-abort)
                 (should-not org-sm--queue)
+                (should (equal header-line-format '((:eval "crumb"))))
                 (should-not (buffer-narrowed-p)))
               (set-marker boss nil)
               (set-marker cloze nil))))
       (when (get-buffer "*Org Ladder*") (kill-buffer "*Org Ladder*"))
-      (when (buffer-live-p buffer) (kill-buffer buffer)))))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer (set-buffer-modified-p nil))
+        (kill-buffer buffer))
+      (delete-file file))))
 
 (ert-deftest org-ladder-stock-resolve-files-contract ()
   "Resolve function symbols, lambdas, and lists; reject unbound symbols."

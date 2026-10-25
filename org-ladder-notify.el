@@ -89,6 +89,7 @@ posframe, or the plain formatted string in non-graphical mode."
 (defun org-ladder-notify-close (&optional buffer)
   "Hide the bottom-right notification posframe BUFFER."
   (interactive)
+  (setq org-ladder-notify-last-text nil)
   (when (and (featurep 'posframe) (fboundp 'posframe-hide))
     (posframe-hide (or buffer org-ladder-notify-buffer))))
 
